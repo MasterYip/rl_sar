@@ -1,0 +1,131 @@
+# El4 Robot Policy Configuration for legged_gym
+# This configuration is for the trained policy from legged_gym (IsaacGym)
+
+# Policy file name (without extension)
+policy_name: "policy"
+
+# Inference backend: "libtorch" or "onnxruntime"
+inference_backend: "libtorch"
+
+# Model file paths (relative to this config file)
+model:
+  libtorch: "policy.pt"
+  onnxruntime: "policy.onnx"
+
+# Observation configuration
+obs:
+  # Total observation dimension: 66 (without height measurements) or 253 (with height measurements)
+  # Observation structure:
+  # [0:3]   - base_lin_vel (3)
+  # [3:6]   - base_ang_vel (3)
+  # [6:9]   - projected_gravity (3)
+  # [9:12]  - commands (3: lin_vel_x, lin_vel_y, ang_vel_yaw)
+  # [12:30] - dof_pos (18)
+  # [30:48] - dof_vel (18)
+  # [48:66] - actions (18)
+  # [66:253] - height_measurements (187) - optional
+  
+  num_obs: 66  # Set to 253 if using height measurements
+  use_height_measurements: false
+  
+  # Observation components
+  components:
+    base_lin_vel: 3
+    base_ang_vel: 3
+    projected_gravity: 3
+    commands: 3
+    dof_pos: 18
+    dof_vel: 18
+    previous_actions: 18
+    height_measurements: 187  # 17 x 11 grid
+
+# Action configuration
+action:
+  num_actions: 18  # 6 legs * 3 joints
+  
+  # Action mapping to robot joints (should match dof_names in base.yaml)
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+
+# Control configuration
+control:
+  # Control frequency
+  control_dt: 0.02  # 50 Hz (decimation * sim_dt = 4 * 0.005)
+  
+  # Action scaling
+  action_scale: 0.25
+  
+  # Damping for transitions
+  damping: 0.5
+  
+  # Use actuator network (if trained with actuator network)
+  use_actuator_network: false
+  actuator_net_file: ""
+
+# Command configuration (for joystick/keyboard control)
+commands:
+  # Command scales
+  lin_vel_x_scale: 1.5
+  lin_vel_y_scale: 0.6
+  ang_vel_yaw_scale: 0.6
+  
+  # Command smoothing
+  command_smoothing: 0.9
+  
+  # Dead zone for joystick
+  deadzone: 0.1
+
+# Domain randomization parameters (should match training)
+domain_rand:
+  # Added noise to observations during inference
+  add_noise: false
+  noise_level: 1.0
+  
+  noise_scales:
+    lin_vel: 0.1
+    ang_vel: 0.2
+    gravity: 0.05
+    dof_pos: 0.01
+    dof_vel: 1.5
+    height_measurements: 0.1
+
+# Reward scales (for reference, not used during inference)
+rewards:
+  scales:
+    tracking_lin_vel: 1.0
+    tracking_ang_vel: 0.5
+    lin_vel_z: -2.0
+    ang_vel_xy: -0.05
+    orientation: -5.0
+    base_height: -8.0
+    torques: -0.00001
+    dof_vel: -0.0
+    dof_acc: -5e-8
+    action_rate: -0.001
+    collision: -1.0
+    feet_air_time: 0.8
+    feet_slip: -0.4
+    dof_pos_limits: -1.0
+    gait_2_step: -5.0
+
+# Safety parameters
+safety:
+  # Enable safety checks
+  enable_safety_checks: true
+  
+  # Joint position limits (percentage of total range)
+  pos_limit_threshold: 0.95
+  
+  # Joint velocity limits
+  vel_limit_threshold: 10.0  # rad/s
+  
+  # Torque limits
+  torque_limit_threshold: 25.0  # Nm
+  
+  # Base orientation limits (projected gravity z-component)
+  orientation_limit: 0.5  # Will trigger safety if > 0.5 (robot upside down)
+
+# Logging configuration
+logging:
+  enable: true
+  log_frequency: 100  # Log every N control cycles
+  log_file: "el4_log.csv"

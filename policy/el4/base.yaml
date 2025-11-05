@@ -1,0 +1,99 @@
+# El4 (ElSpider 4) Robot Base Configuration
+# This file follows the physical robot's joint order
+
+# Number of degrees of freedom (6 legs * 3 joints per leg)
+num_of_dofs: 18
+
+# Default joint positions (6 legs: RF, RM, RB, LF, LM, LB; 3 joints per leg: HAA, HFE, KFE)
+# Order: RF_HAA, RF_HFE, RF_KFE, RM_HAA, RM_HFE, RM_KFE, RB_HAA, RB_HFE, RB_KFE,
+#        LF_HAA, LF_HFE, LF_KFE, LM_HAA, LM_HFE, LM_KFE, LB_HAA, LB_HFE, LB_KFE
+default_dof_pos: [
+  0.0, 0.6, -1.2,  # RF: HAA, HFE, KFE
+  0.0, 0.6, -1.2,  # RM: HAA, HFE, KFE
+  0.0, 0.6, -1.2,  # RB: HAA, HFE, KFE
+  0.0, 0.6, -1.2,  # LF: HAA, HFE, KFE
+  0.0, 0.6, -1.2,  # LM: HAA, HFE, KFE
+  0.0, 0.6, -1.2   # LB: HAA, HFE, KFE
+]
+
+# Joint names mapping (from URDF)
+dof_names: [
+  "RF_HAA", "RF_HFE", "RF_KFE",
+  "RM_HAA", "RM_HFE", "RM_KFE",
+  "RB_HAA", "RB_HFE", "RB_KFE",
+  "LF_HAA", "LF_HFE", "LF_KFE",
+  "LM_HAA", "LM_HFE", "LM_KFE",
+  "LB_HAA", "LB_HFE", "LB_KFE"
+]
+
+# Control parameters
+control:
+  # PD gains (kp, kd for each joint)
+  stiffness: [40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0,
+              40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0]
+  damping: [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
+            2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+  
+  # Action scale
+  action_scale: 0.25
+  
+  # Decimation: number of control action updates @ sim DT per policy DT
+  decimation: 4
+
+# Robot physical properties
+init_state:
+  # Base position [x, y, z]
+  pos: [0.0, 0.0, 0.3]
+  
+  # Base orientation (quaternion [x, y, z, w])
+  rot: [0.0, 0.0, 0.0, 1.0]
+  
+  # Base linear velocity [x, y, z]
+  lin_vel: [0.0, 0.0, 0.0]
+  
+  # Base angular velocity [x, y, z]
+  ang_vel: [0.0, 0.0, 0.0]
+
+# Command ranges
+commands:
+  lin_vel_x: [-1.5, 1.5]  # [m/s]
+  lin_vel_y: [-0.6, 0.6]  # [m/s]
+  ang_vel_yaw: [-0.6, 0.6]  # [rad/s]
+
+# Normalization
+normalization:
+  clip_observations: 100.0
+  clip_actions: 100.0
+  
+  # Observation scales
+  obs_scales:
+    lin_vel: 2.0
+    ang_vel: 0.25
+    dof_pos: 1.0
+    dof_vel: 0.05
+    height_measurements: 5.0
+
+# Simulation parameters
+sim:
+  dt: 0.005  # 200 Hz
+  substeps: 1
+  gravity: [0.0, 0.0, -9.81]
+
+# Terrain
+terrain:
+  measure_heights: true
+  measured_points_x: 17
+  measured_points_y: 11
+  terrain_length: 8.0
+  terrain_width: 8.0
+
+# Safety limits
+safety:
+  # Position limits for joints [min, max]
+  pos_limit_margin: 0.05  # margin from actual hardware limits
+  
+  # Velocity limits
+  vel_limit_scale: 1.0
+  
+  # Torque limits
+  torque_limit_scale: 1.0
