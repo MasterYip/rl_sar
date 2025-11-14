@@ -4,7 +4,7 @@
 el4/legged_gym:
   model_name: "policy.pt"
   num_observations: 66
-  observations: ["base_lin_vel", "base_ang_vel", "projected_gravity", "commands", "dof_pos", "dof_vel", "actions"]
+  observations: ["lin_vel", "ang_vel", "gravity_vec", "commands", "dof_pos", "dof_vel", "actions"]
   observations_history: []  # 0 is the latest observation
   observations_history_priority: "time"  # "time" or "term" priority
   clip_obs: 100.0
