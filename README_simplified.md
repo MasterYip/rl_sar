@@ -38,6 +38,10 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 #### Mujoco
 
 ```bash
+./build.sh -mj  # or ./build.sh --mujoco
+```
+
+```bash
 ./cmake_build/bin/rl_sim_mujoco <ROBOT> <SCENE>
 # Example: ./cmake_build/bin/rl_sim_mujoco g1 scene_29dof
 ./cmake_build/bin/rl_sim_mujoco el4 scene

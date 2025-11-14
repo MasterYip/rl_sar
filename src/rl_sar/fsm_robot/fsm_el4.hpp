@@ -55,12 +55,12 @@ public:
     float percent_getup = 0.0f;
     // Pre-standing position for hexapod (6 legs * 3 joints = 18 DOFs)
     std::vector<float> pre_running_pos = {
-        0.0, 0.9, -1.8,  // RF
-        0.0, 0.9, -1.8,  // RM
-        0.0, 0.9, -1.8,  // RB
-        0.0, 0.9, -1.8,  // LF
-        0.0, 0.9, -1.8,  // LM
-        0.0, 0.9, -1.8   // LB
+        0.0, 0.0, 0.0,  // RF
+        0.0, 0.0, 0.0,  // RM
+        0.0, 0.0, 0.0,  // RB
+        0.0, 0.0, 0.0,  // LF
+        0.0, 0.0, 0.0,  // LM
+        0.0, 0.0, 0.0   // LB
     };
     bool stand_from_passive = true;
 
