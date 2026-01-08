@@ -220,7 +220,27 @@ if(USE_TORCH OR USE_ONNX)
     endforeach()
 endif()
 
-find_package(TBB REQUIRED)
+# TBB Configuration
+if(SYSTEM_TYPE STREQUAL "Linux")
+    # Manually configure TBB on Linux to avoid CMake config issues
+    find_path(TBB_INCLUDE_DIR tbb/tbb.h PATHS /usr/include /usr/local/include)
+    find_library(TBB_LIBRARY NAMES tbb PATHS /usr/lib /usr/lib/x86_64-linux-gnu /usr/local/lib)
+    
+    if(TBB_INCLUDE_DIR AND TBB_LIBRARY)
+        add_library(TBB::tbb SHARED IMPORTED)
+        set_target_properties(TBB::tbb PROPERTIES
+            IMPORTED_LOCATION "${TBB_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${TBB_INCLUDE_DIR}"
+        )
+        message(STATUS "Found TBB: ${TBB_LIBRARY}")
+        message(STATUS "TBB include: ${TBB_INCLUDE_DIR}")
+    else()
+        message(FATAL_ERROR "TBB not found. Please install: sudo apt-get install libtbb-dev")
+    endif()
+else()
+    find_package(TBB REQUIRED)
+endif()
+
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
@@ -546,6 +566,60 @@ if(SYSTEM_TYPE STREQUAL "Linux")
             install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
         endif()
     endif()
+endif()
+
+# executable for rl real el4090
+if(SYSTEM_TYPE STREQUAL "Linux")
+    # Build el4090 motor SDK
+    add_subdirectory(library/thirdparty/el4090_motor_sdk)
+    
+    add_executable(rl_real_el4090 src/rl_real_el4090.cpp)
+    target_link_libraries(rl_real_el4090
+        rl_sdk
+        observation_buffer
+        ${YAML_CPP_LIBRARIES}
+        Threads::Threads
+        el4090_motor_control
+    )
+    
+    # Add include directories for el4090 motor SDK
+    target_include_directories(rl_real_el4090 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/soem
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/osal
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/osal/linux
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw/linux
+    )
+    
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_el4090 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_el4090
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_el4090 DESTINATION lib/${PROJECT_NAME})
+        endif()
+    endif()
+    
+    # Test executable for EtherCAT communication
+    add_executable(test_ethercat_communication test/test_ethercat_communication.cpp)
+    target_link_libraries(test_ethercat_communication
+        ${YAML_CPP_LIBRARIES}
+        Threads::Threads
+        el4090_motor_control
+    )
+    target_include_directories(test_ethercat_communication PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/soem
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/osal
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/osal/linux
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/oshw
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/oshw/linux
+    )
 endif()
 
 # executable for actuator net

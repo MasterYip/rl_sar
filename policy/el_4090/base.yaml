@@ -1,0 +1,45 @@
+# Copyright (c) 2024-2025 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
+el_4090:
+  dt: 0.005
+  decimation: 4
+  fixed_kp: [100.0, 100.0, 100.0,
+             100.0, 100.0, 100.0,
+             100.0, 100.0, 100.0,
+             100.0, 100.0, 100.0,
+             100.0, 100.0, 100.0,
+             100.0, 100.0, 100.0]
+  fixed_kd: [3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0,
+             3.0, 3.0, 3.0]
+  num_of_dofs: 18
+  wheel_indices: []
+  torque_limits: [80.0, 80.0, 80.0,
+                  80.0, 80.0, 80.0,
+                  80.0, 80.0, 80.0,
+                  80.0, 80.0, 80.0,
+                  80.0, 80.0, 80.0,
+                  80.0, 80.0, 80.0]
+  default_dof_pos: [0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0]
+  joint_names: ["RF_HAA", "RF_HFE", "RF_KFE",
+                "RM_HAA", "RM_HFE", "RM_KFE",
+                "RB_HAA", "RB_HFE", "RB_KFE",
+                "LF_HAA", "LF_HFE", "LF_KFE",
+                "LM_HAA", "LM_HFE", "LM_KFE",
+                "LB_HAA", "LB_HFE", "LB_KFE"]
+  joint_controller_names: ["RF_HAA_controller", "RF_HFE_controller", "RF_KFE_controller",
+                           "RM_HAA_controller", "RM_HFE_controller", "RM_KFE_controller",
+                           "RB_HAA_controller", "RB_HFE_controller", "RB_KFE_controller",
+                           "LF_HAA_controller", "LF_HFE_controller", "LF_KFE_controller",
+                           "LM_HAA_controller", "LM_HFE_controller", "LM_KFE_controller",
+                           "LB_HAA_controller", "LB_HFE_controller", "LB_KFE_controller"]
+  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]

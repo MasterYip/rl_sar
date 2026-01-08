@@ -45,7 +45,7 @@ public:
         }
     }
 
-    void Run()
+    void  Run()
     {
         // Main control loop
         const float control_dt = 0.002f; // 500 Hz control loop
