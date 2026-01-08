@@ -194,22 +194,21 @@ bool test_send_damping_command() {
     };
     
     try {
+        // motor_mixed_control 模式: 对每个电机独立发送命令
         for (int slave = 0; slave < 3; ++slave) {
-            EtherCAT_Msg tx_msg = motorData.getTxMsg(slave);
-            
             for (int passage = 1; passage <= 6; ++passage) {
                 int motor_id = slave_to_motor_id[slave][passage - 1];
                 
-                // 发送阻尼控制命令: kp=0, kd=3, pos=0, spd=0, tor=0
+                // 使用 motor_mixed_control 模式发送阻尼命令
+                EtherCAT_Msg tx_msg = motorData.getTxMsg(slave);
                 send_motor_ctrl_cmd(&tx_msg, passage, motor_id, 
                                     0.0f,   // kp = 0 (无位置控制)
                                     3.0f,   // kd = 3 (轻阻尼)
                                     0.0f,   // pos = 0
                                     0.0f,   // spd = 0
                                     0.0f);  // tor = 0
+                motorData.setTxMsg(slave, tx_msg);
             }
-            
-            motorData.setTxMsg(slave, tx_msg);
             std::cout << "[Info] Sent damping commands to Slave " << slave << std::endl;
         }
         

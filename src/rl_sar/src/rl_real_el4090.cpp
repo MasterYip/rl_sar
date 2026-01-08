@@ -540,13 +540,12 @@ float RL_Real::GetCommandAngle(int motor_id, float target_angle)
 
 void RL_Real::SendMotorCommand(int slave, int passage, int motor_id, float kp, float kd, float pos, float spd, float tor)
 {
-    // Get the current TX message for this slave
+    // motor_mixed_control 模式:
+    // 1. 获取当前 slave 的 TX 消息
+    // 2. 修改对应 passage 的电机命令
+    // 3. 将修改后的消息设置回去
     EtherCAT_Msg tx_msg = motorData.getTxMsg(slave);
-    
-    // Send mixed control command (position, velocity, torque with PD gains)
     send_motor_ctrl_cmd(&tx_msg, passage, motor_id, kp, kd, pos, spd, tor);
-    
-    // Update the TX message
     motorData.setTxMsg(slave, tx_msg);
 }
 

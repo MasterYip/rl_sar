@@ -15,4 +15,4 @@
 	url = https://github.com/drewnoakes/joystick.git
 [submodule "src/rl_sar_zoo"]
 	path = src/rl_sar_zoo
-	url = https://github.com/MasterYip/rl_sar_zoo
+	url = https://github.com/llyxc-zht/rl_sar_zoo.git
