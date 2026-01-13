@@ -88,11 +88,49 @@ namespace Input
     enum class Keyboard
     {
         None = 0,
-        A, B, C, D, E, F, G, H, I, J, K, L, M,
-        N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-        Num0, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
-        Space, Enter, Escape,
-        Up, Down, Left, Right
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+        J,
+        K,
+        L,
+        M,
+        N,
+        O,
+        P,
+        Q,
+        R,
+        S,
+        T,
+        U,
+        V,
+        W,
+        X,
+        Y,
+        Z,
+        Num0,
+        Num1,
+        Num2,
+        Num3,
+        Num4,
+        Num5,
+        Num6,
+        Num7,
+        Num8,
+        Num9,
+        Space,
+        Enter,
+        Escape,
+        Up,
+        Down,
+        Left,
+        Right
     };
 
     // Recommend: A-GetUp B-GetDown X-ToggleNavMode Y-None
@@ -103,9 +141,38 @@ namespace Input
     enum class Gamepad
     {
         None = 0,
-        A, B, X, Y, LB, RB, LStick, RStick, DPadUp, DPadDown, DPadLeft, DPadRight,
-        LB_A, LB_B, LB_X, LB_Y, LB_LStick, LB_RStick, LB_DPadUp, LB_DPadDown, LB_DPadLeft, LB_DPadRight,
-        RB_A, RB_B, RB_X, RB_Y, RB_LStick, RB_RStick, RB_DPadUp, RB_DPadDown, RB_DPadLeft, RB_DPadRight,
+        A,
+        B,
+        X,
+        Y,
+        LB,
+        RB,
+        LStick,
+        RStick,
+        DPadUp,
+        DPadDown,
+        DPadLeft,
+        DPadRight,
+        LB_A,
+        LB_B,
+        LB_X,
+        LB_Y,
+        LB_LStick,
+        LB_RStick,
+        LB_DPadUp,
+        LB_DPadDown,
+        LB_DPadLeft,
+        LB_DPadRight,
+        RB_A,
+        RB_B,
+        RB_X,
+        RB_Y,
+        RB_LStick,
+        RB_RStick,
+        RB_DPadUp,
+        RB_DPadDown,
+        RB_DPadLeft,
+        RB_DPadRight,
         LB_RB
     };
 }
@@ -153,8 +220,8 @@ struct YamlParams
     // WARNING: For vectors/containers, store result in a variable before using iterators/references:
     //   ✓ auto vec = params.Get<std::vector<int>>("key"); vec.begin()
     //   ✗ params.Get<std::vector<int>>("key").begin()  // dangling reference!
-    template<typename T>
-    T Get(const std::string& key, const T& default_value = T()) const
+    template <typename T>
+    T Get(const std::string &key, const T &default_value = T()) const
     {
         if (config_node[key])
         {
@@ -163,7 +230,7 @@ struct YamlParams
         return default_value;
     }
 
-    bool Has(const std::string& key) const
+    bool Has(const std::string &key) const
     {
         return config_node[key].IsDefined();
     }
@@ -219,7 +286,7 @@ public:
     void ComputeOutput(const std::vector<float> &actions, std::vector<float> &output_dof_pos, std::vector<float> &output_dof_vel, std::vector<float> &output_dof_tau);
 
     // yaml params
-    void ReadYaml(const std::string& file_path, const std::string& file_name);
+    void ReadYaml(const std::string &file_path, const std::string &file_name);
 
     // csv logger
     std::string csv_filename;
@@ -238,7 +305,7 @@ public:
     int motiontime = 0;
     std::string robot_name, config_name;
     bool simulation_running = true;
-    std::string ang_vel_axis = "body";  // "world" or "body"
+    std::string ang_vel_axis = "body"; // "world" or "body"
     unsigned long long episode_length_buf = 0;
     float motion_length = 0.0;
     int InverseJointMapping(int idx) const;
@@ -264,21 +331,29 @@ public:
 class RLFSMState : public FSMState
 {
 public:
-    RLFSMState(RL& rl, const std::string& name)
+    RLFSMState(RL &rl, const std::string &name)
         : FSMState(name), rl(rl), fsm_state(nullptr), fsm_command(nullptr) {}
 
-    RL& rl;
+    RL &rl;
     const RobotState<float> *fsm_state;
     RobotCommand<float> *fsm_command;
 
     bool Interpolate(
-        float& percent,
-        const std::vector<float>& start_pos,
-        const std::vector<float>& target_pos,
+        float &percent,
+        const std::vector<float> &start_pos,
+        const std::vector<float> &target_pos,
         float duration_seconds,
-        const std::string& description = "",
-        bool use_fixed_gains = true
-    );
+        const std::string &description = "",
+        bool use_fixed_gains = true);
+
+    // 基于实际时间的插值版本，更鲁棒地处理通信超时
+    bool InterpolateTimeBased(
+        std::chrono::steady_clock::time_point &start_time,
+        const std::vector<float> &start_pos,
+        const std::vector<float> &target_pos,
+        float duration_seconds,
+        const std::string &description = "",
+        bool use_fixed_gains = true);
 
     void RLControl();
 };

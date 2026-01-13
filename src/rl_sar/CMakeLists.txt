@@ -570,8 +570,14 @@ endif()
 
 # executable for rl real el4090
 if(SYSTEM_TYPE STREQUAL "Linux")
+    # Find serial library for IMU
+    find_library(SERIAL_LIB serial REQUIRED)
+    
     # Build el4090 motor SDK
     add_subdirectory(library/thirdparty/el4090_motor_sdk)
+    
+    # Build IMU SDK
+    add_subdirectory(library/thirdparty/IMU_sdk)
     
     add_executable(rl_real_el4090 src/rl_real_el4090.cpp)
     target_link_libraries(rl_real_el4090
@@ -580,9 +586,11 @@ if(SYSTEM_TYPE STREQUAL "Linux")
         ${YAML_CPP_LIBRARIES}
         Threads::Threads
         el4090_motor_control
+        fdilink_ahrs
+        ${SERIAL_LIB}
     )
     
-    # Add include directories for el4090 motor SDK
+    # Add include directories for el4090 motor SDK and IMU SDK
     target_include_directories(rl_real_el4090 PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/soem
@@ -590,6 +598,7 @@ if(SYSTEM_TYPE STREQUAL "Linux")
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/osal/linux
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw/linux
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/IMU_sdk/include
     )
     
     if(NOT USE_CMAKE)
@@ -604,21 +613,20 @@ if(SYSTEM_TYPE STREQUAL "Linux")
         endif()
     endif()
     
-    # Test executable for EtherCAT communication
-    add_executable(test_ethercat_communication test/test_ethercat_communication.cpp)
-    target_link_libraries(test_ethercat_communication
+    # Test executable for motor data collection
+    add_executable(test_motor test/test_motor.cpp)
+    target_link_libraries(test_motor
         ${YAML_CPP_LIBRARIES}
         Threads::Threads
         el4090_motor_control
     )
-    target_include_directories(test_ethercat_communication PRIVATE
+    target_include_directories(test_motor PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/soem
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/osal
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/osal/linux
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/oshw
-        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/thirdparty/soem/oshw/linux
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/soem
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/osal
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/osal/linux
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/el4090_motor_sdk/soem/oshw/linux
     )
 endif()
 

@@ -9,80 +9,95 @@ namespace py = pybind11;
 
 extern MotorData motorData;
 
-class PyEtherCATControl {
+class PyEtherCATControl
+{
 public:
-    bool init(const std::string& interface) {
-        EtherCAT_Init(const_cast<char*>(interface.c_str()));
+    bool init(const std::string &interface)
+    {
+        EtherCAT_Init(const_cast<char *>(interface.c_str()));
         return (ec_slavecount > 0);
     }
 
-    void start() {
+    void start()
+    {
         ethercatManager.startThreads();
     }
 
-    void stop() {
+    void stop()
+    {
         ethercatManager.stopThreads();
     }
 
     void set_motor_speed(int slave, uint8_t passage, uint16_t motor_id, float spd, uint16_t cur,
-                        uint8_t ack_status) {
+                         uint8_t ack_status)
+    {
         EtherCAT_Msg msg = motorData.getTxMsg(slave);
         ::set_motor_speed(&msg, passage, motor_id, spd, cur, ack_status);
         motorData.setTxMsg(slave, msg);
     }
 
     void set_motor_position(int slave, uint8_t passage, uint16_t motor_id, float pos, uint16_t spd, uint16_t cur,
-                            uint8_t ack_status) {
+                            uint8_t ack_status)
+    {
         EtherCAT_Msg msg = motorData.getTxMsg(slave);
         ::set_motor_position(&msg, passage, motor_id, pos, spd, cur, ack_status);
         motorData.setTxMsg(slave, msg);
     }
 
-    void stop_motor(int slave, uint8_t passage, uint16_t motor_id, uint16_t cur, uint8_t ack_status) {
+    void stop_motor(int slave, uint8_t passage, uint16_t motor_id, uint16_t cur, uint8_t ack_status)
+    {
         EtherCAT_Msg msg = motorData.getTxMsg(slave);
         ::set_motor_speed(&msg, passage, motor_id, 0.0f, cur, ack_status);
         motorData.setTxMsg(slave, msg);
     }
 
     void motor_mixed_control(int slave, uint8_t passage, uint16_t motor_id, float kp, float kd, float pos,
-                            float spd, float tor) {
+                             float spd, float tor)
+    {
         EtherCAT_Msg msg = motorData.getTxMsg(slave);
         ::send_motor_ctrl_cmd(&msg, passage, motor_id, kp, kd, pos, spd, tor);
         motorData.setTxMsg(slave, msg);
     }
 
-    std::vector<float> get_motor_status(int slave, int passage, int ack_status) const {
+    std::vector<float> get_motor_status(int slave, int passage, int ack_status = 1) const
+    {
         OD_Motor_Msg msg = motorData.getRxMotorMsg(slave, passage);
-         if (ack_status == 1) {
-        return {
-            static_cast<float>(msg.motor_id),
-            msg.angle_actual_rad,
-            msg.speed_actual_rad,
-            msg.current_actual_float
-        };
-        } else if (ack_status == 2) {
-        return {
-            static_cast<float>(msg.motor_id),
-            msg.angle_actual_float,
-            msg.speed_actual_float,
-            msg.current_actual_float
-        };
-        } else {
-        return {
-            static_cast<float>(msg.motor_id),
-            msg.angle_actual_float,
-            msg.speed_actual_float,
-            msg.current_actual_float
-        };
+        if (ack_status == 1)
+        {
+            return {
+                static_cast<float>(msg.motor_id),
+                msg.angle_actual_rad,
+                msg.speed_actual_rad,
+                msg.current_actual_float};
+        }
+        else if (ack_status == 2)
+        {
+            return {
+                static_cast<float>(msg.motor_id),
+                msg.angle_actual_float,
+                msg.speed_actual_float,
+                msg.current_actual_float};
+        }
+        else
+        {
+            return {
+                static_cast<float>(msg.motor_id),
+                msg.angle_actual_float,
+                msg.speed_actual_float,
+                msg.current_actual_float};
         }
     }
 
-    std::vector<std::vector<float>> get_all_motor_status(int ack_status) const {
+    std::vector<std::vector<float>> get_all_motor_status(int ack_status) const
+    {
         std::vector<std::vector<float>> result;
-        for (int slave = 0; slave < SLAVE_NUMBER; ++slave) {
-            for (int motor = 0; motor < 6; ++motor) {
+        for (int slave = 0; slave < SLAVE_NUMBER; ++slave)
+        {
+            for (int motor = 0; motor < 6; ++motor)
+            {
                 OD_Motor_Msg msg = motorData.getRxMotorMsg(slave, motor);
-                if(ack_status == 1 ){
+                if (ack_status == 1)
+                {
                     result.push_back({
                         static_cast<float>(slave),
                         static_cast<float>(motor),
@@ -92,7 +107,8 @@ public:
                         msg.current_actual_float,
                     });
                 }
-                else if(ack_status ==2){
+                else if (ack_status == 2)
+                {
                     result.push_back({
                         static_cast<float>(slave),
                         static_cast<float>(motor),
@@ -102,7 +118,8 @@ public:
                         msg.current_actual_float,
                     });
                 }
-                else{
+                else
+                {
                     result.push_back({
                         static_cast<float>(slave),
                         static_cast<float>(motor),
@@ -117,12 +134,14 @@ public:
         return result;
     }
 
-    int get_slave_count() const {
+    int get_slave_count() const
+    {
         return ec_slavecount;
     }
 };
 
-PYBIND11_MODULE(pyethercat, m) {
+PYBIND11_MODULE(pyethercat, m)
+{
     m.doc() = "Python interface for EtherCAT motor control";
 
     py::class_<PyEtherCATControl>(m, "EtherCATControl")

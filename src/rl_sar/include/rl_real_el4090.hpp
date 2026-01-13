@@ -14,7 +14,8 @@
 #include "observation_buffer.hpp"
 #include "inference_runtime.hpp"
 #include "loop.hpp"
-#include "fsm_el4.hpp"
+#include "fsm_el4090.hpp"
+#include "ahrs_interface.h"
 
 #include <csignal>
 #include <memory>
@@ -24,9 +25,15 @@
 #include <array>
 #include <map>
 #include <fstream>
+#include <iomanip>
+#include <cmath>
+#include <fcntl.h>
+#include <linux/joystick.h>
+#include <unistd.h>
 
 // EtherCAT motor control
-extern "C" {
+extern "C"
+{
 #include "config.h"
 #include "motor_control.h"
 #include "transmit.h"
@@ -57,14 +64,34 @@ public:
 #endif
 
 private:
-    // rl functions
+    // ==================== Core Functions ====================
+
+    // RL functions
     std::vector<float> Forward() override;
     void GetState(RobotState<float> *state) override;
     void SetCommand(const RobotCommand<float> *command) override;
     void RunModel();
     void RobotControl();
 
-    // loop
+    // Config and buffer initialization
+    void InitConfigAndBuffers();
+
+    // EtherCAT functions
+    bool InitEtherCAT(const char *ifname);
+    void ShutdownEtherCAT();
+
+    // Motor send/receive
+    void HardwareSend();
+    void HardwareRecv();
+
+    // Joystick functions
+    void InitJoystick();
+    void UpdateJoystick();
+    void ShutdownJoystick();
+
+    // ==================== Data Members ====================
+
+    // Loop threads
     std::shared_ptr<LoopFunc> loop_keyboard;
     std::shared_ptr<LoopFunc> loop_control;
     std::shared_ptr<LoopFunc> loop_hardware_send;
@@ -72,85 +99,84 @@ private:
     std::shared_ptr<LoopFunc> loop_rl;
     std::shared_ptr<LoopFunc> loop_plot;
 
+    // Mapping: Policy Index ↔ Motor ID
+    std::vector<int> policy_to_motor_id_;   // Policy Index → Motor ID
+    std::map<int, int> motor_id_to_policy_; // Motor ID → Policy Index
+
+    // Mapping: Motor ID ↔ EtherCAT Address
+    struct EtherCATAddr
+    {
+        int slave;
+        int passage;
+    };
+    std::map<int, EtherCATAddr> motor_ethercat_addr_; // Motor ID → [slave, passage]
+
+    // Motor properties (indexed by Motor ID)
+    std::map<int, int> motor_direction_; // Motor ID → direction (+1 or -1)
+    std::map<int, float> motor_offset_;  // Motor ID → calibration offset
+
+    // State and command buffers (indexed by Policy Index)
+    struct MotorState
+    {
+        std::vector<float> position;
+        std::vector<float> velocity;
+        std::vector<float> torque;
+        std::vector<float> temperature;
+    };
+
+    struct IMUState
+    {
+        std::array<float, 4> quaternion;
+        std::array<float, 3> gyroscope;
+        std::array<float, 3> accelerometer;
+    };
+
+    struct MotorCommand
+    {
+        std::vector<float> target_position;
+        std::vector<float> target_velocity;
+        std::vector<float> kp;
+        std::vector<float> kd;
+        std::vector<float> feedforward_torque;
+    };
+
+    MotorState motor_state_buffer;
+    IMUState imu_state_buffer;
+    MotorCommand motor_command_buffer;
+
+    // IMU interface
+    std::unique_ptr<FDILink::AHRSInterface> imu_interface_;
+    FDILink::ImuData last_imu_data_;
+
+    // Velocity estimation
+    std::array<float, 3> estimated_velocity_; // body frame linear velocity
+    std::array<float, 3> last_accelerometer_; // for velocity integration
+    std::chrono::steady_clock::time_point last_vel_update_time_;
+    void UpdateVelocityEstimation();
+
+    // Debug printing
+    int debug_print_counter_;
+    void PrintDebugInfo();
+
+    // EtherCAT interface
+    std::string ethercat_ifname_;
+    int num_dofs;
+
+    // Joystick interface
+    int joystick_fd_;
+    bool joystick_enabled_;
+    struct js_event joystick_event_;
+    std::map<int, bool> button_states_;
+    std::map<int, float> axis_values_;
+
 #ifdef PLOT
-    // plot
     const int plot_size = 100;
     std::vector<int> plot_t;
     std::vector<std::vector<float>> plot_real_joint_pos, plot_target_joint_pos;
     void Plot();
 #endif
 
-    // hardware interface - EtherCAT motor control
-    void HardwareSend();
-    void HardwareRecv();
-    
-    // EtherCAT initialization
-    bool InitEtherCAT(const char* ifname);
-    void ShutdownEtherCAT();
-    
-    // EtherCAT network interface name
-    std::string ethercat_ifname_;
-    
-    // Motor ID mapping: [slave][passage] -> motor_id
-    // slave: EtherCAT slave index (0-2 for 3 slaves)
-    // passage: CAN passage on slave (1-6)
-    static constexpr int SLAVE_COUNT = 3;
-    static constexpr int PASSAGE_PER_SLAVE = 6;
-    std::array<std::array<int, PASSAGE_PER_SLAVE>, SLAVE_COUNT> motor_id_map_;
-    
-    // Reverse mapping: motor_id -> [slave, passage]
-    struct MotorLocation {
-        int slave;
-        int passage;
-    };
-    std::map<int, MotorLocation> motor_location_map_;
-    
-    // Motor calibration offsets (from YAML file)
-    std::map<int, float> motor_offsets_;
-    
-    // Helper functions
-    void InitMotorMapping();
-    void LoadMotorCalibration(const std::string& yaml_path);
-    float GetCommandAngle(int motor_id, float target_angle);
-    void SendMotorCommand(int slave, int passage, int motor_id, float kp, float kd, float pos, float spd, float tor);
-    void ReadMotorStatus(int slave, int passage, int motor_id, float& position, float& velocity, float& torque);
-    
-    // Motor state buffers
-    struct MotorState
-    {
-        std::vector<float> position;      // Joint positions (rad)
-        std::vector<float> velocity;      // Joint velocities (rad/s)
-        std::vector<float> torque;        // Joint torques (N·m)
-        std::vector<float> temperature;   // Motor temperatures (°C)
-    };
-    
-    // IMU state buffers
-    struct IMUState
-    {
-        std::array<float, 4> quaternion;  // [w, x, y, z]
-        std::array<float, 3> gyroscope;   // [roll_rate, pitch_rate, yaw_rate] (rad/s)
-        std::array<float, 3> accelerometer; // [ax, ay, az] (m/s^2)
-    };
-    
-    MotorState motor_state_buffer;
-    IMUState imu_state_buffer;
-    
-    // Motor command buffers
-    struct MotorCommand
-    {
-        std::vector<float> target_position;  // Target joint positions (rad)
-        std::vector<float> target_velocity;  // Target joint velocities (rad/s)
-        std::vector<float> kp;               // Position gains
-        std::vector<float> kd;               // Velocity gains
-        std::vector<float> feedforward_torque; // Feedforward torques (N·m)
-    };
-    
-    MotorCommand motor_command_buffer;
-
     // others
-    std::vector<float> mapped_joint_positions;
-    std::vector<float> mapped_joint_velocities;
-    int num_dofs;
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;

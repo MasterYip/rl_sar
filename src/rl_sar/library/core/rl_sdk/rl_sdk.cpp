@@ -5,7 +5,7 @@
 
 #include "rl_sdk.hpp"
 
-void RL::StateController(const RobotState<float>* state, RobotCommand<float>* command)
+void RL::StateController(const RobotState<float> *state, RobotCommand<float> *command)
 {
     auto updateState = [&](std::shared_ptr<FSMState> statePtr)
     {
@@ -15,7 +15,7 @@ void RL::StateController(const RobotState<float>* state, RobotCommand<float>* co
             rl_fsm_state->fsm_command = command;
         }
     };
-    for (auto& pair : fsm.states_)
+    for (auto &pair : fsm.states_)
     {
         updateState(pair.second);
     }
@@ -57,7 +57,8 @@ void RL::StateController(const RobotState<float>* state, RobotCommand<float>* co
     if (this->control.current_keyboard == Input::Keyboard::N || this->control.current_gamepad == Input::Gamepad::X)
     {
         this->control.navigation_mode = !this->control.navigation_mode;
-        std::cout << std::endl << LOGGER::INFO << "Navigation mode: " << (this->control.navigation_mode ? "ON" : "OFF") << std::endl;
+        std::cout << std::endl
+                  << LOGGER::INFO << "Navigation mode: " << (this->control.navigation_mode ? "ON" : "OFF") << std::endl;
     }
 }
 
@@ -144,8 +145,7 @@ std::vector<float> RL::ComputeObservation()
                 std::vector<float> waist_angles = {
                     this->obs.dof_pos[InverseJointMapping(waist_sdk_indices[0])],
                     this->obs.dof_pos[InverseJointMapping(waist_sdk_indices[1])],
-                    this->obs.dof_pos[InverseJointMapping(waist_sdk_indices[2])]
-                };
+                    this->obs.dof_pos[InverseJointMapping(waist_sdk_indices[2])]};
                 std::vector<float> robot_torso_quat_w = MotionLoader::ComputeTorsoQuat(this->obs.base_quat, waist_angles);
                 std::vector<float> ref_torso_quat_w = this->motion_loader->GetAnchorQuat();
                 std::vector<float> init_quat = this->motion_loader->GetInitQuat();
@@ -168,13 +168,13 @@ std::vector<float> RL::ComputeObservation()
     }
 
     this->obs_dims.clear();
-    for (const auto& obs : obs_list)
+    for (const auto &obs : obs_list)
     {
-       this->obs_dims.push_back(obs.size());
+        this->obs_dims.push_back(obs.size());
     }
 
     std::vector<float> obs;
-    for (const auto& obs_vec : obs_list)
+    for (const auto &obs_vec : obs_list)
     {
         obs.insert(obs.end(), obs_vec.begin(), obs_vec.end());
     }
@@ -237,7 +237,7 @@ void RL::InitRL(std::string robot_config_path)
     this->InitControl();
 
     // init obs history
-    const auto& observations_history = this->params.Get<std::vector<int>>("observations_history");  // avoid dangling reference
+    const auto &observations_history = this->params.Get<std::vector<int>>("observations_history"); // avoid dangling reference
     if (!observations_history.empty())
     {
         int history_length = *std::max_element(observations_history.begin(), observations_history.end()) + 1;
@@ -273,13 +273,15 @@ void RL::ComputeOutput(const std::vector<float> &actions, std::vector<float> &ou
 int RL::InverseJointMapping(int idx) const
 {
     auto joint_mapping = this->params.Get<std::vector<int>>("joint_mapping");
-    for (size_t i = 0; i < joint_mapping.size(); ++i) {
-        if (joint_mapping[i] == idx) return (int)i;
+    for (size_t i = 0; i < joint_mapping.size(); ++i)
+    {
+        if (joint_mapping[i] == idx)
+            return (int)i;
     }
     return -1;
 }
 
-void RL::TorqueProtect(const std::vector<float>& origin_output_dof_tau)
+void RL::TorqueProtect(const std::vector<float> &origin_output_dof_tau)
 {
     std::vector<int> out_of_range_indices;
     std::vector<float> out_of_range_values;
@@ -308,7 +310,7 @@ void RL::TorqueProtect(const std::vector<float>& origin_output_dof_tau)
         }
         // Just a reminder, no protection
         // this->control.SetKeyboard(Input::Keyboard::P);
-        std::cout << LOGGER::INFO << "Switching to STATE_POS_GETDOWN"<< std::endl;
+        std::cout << LOGGER::INFO << "Switching to STATE_POS_GETDOWN" << std::endl;
     }
 }
 
@@ -316,7 +318,7 @@ void RL::AttitudeProtect(const std::vector<float> &quaternion, float pitch_thres
 {
     // Use QuaternionToEuler from vector_math.hpp
     std::vector<float> euler = QuaternionToEuler(quaternion);
-    float roll = euler[0] * 57.2958f;   // Convert to degrees
+    float roll = euler[0] * 57.2958f; // Convert to degrees
     float pitch = euler[1] * 57.2958f;
 
     if (std::fabs(roll) > roll_threshold)
@@ -347,9 +349,9 @@ static int kbhit()
         tcgetattr(STDIN_FILENO, &original_term);
 
         termios new_term = original_term;
-        new_term.c_lflag &= ~(ICANON | ECHO);  // Disable canonical mode and echo
-        new_term.c_cc[VMIN] = 0;   // Non-blocking read
-        new_term.c_cc[VTIME] = 0;  // No timeout
+        new_term.c_lflag &= ~(ICANON | ECHO); // Disable canonical mode and echo
+        new_term.c_cc[VMIN] = 0;              // Non-blocking read
+        new_term.c_cc[VTIME] = 0;             // No timeout
 
         tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
 
@@ -357,9 +359,8 @@ static int kbhit()
         static bool cleanup_registered = false;
         if (!cleanup_registered)
         {
-            std::atexit([]() {
-                tcsetattr(STDIN_FILENO, TCSANOW, &original_term);
-            });
+            std::atexit([]()
+                        { tcsetattr(STDIN_FILENO, TCSANOW, &original_term); });
             cleanup_registered = true;
         }
 
@@ -380,45 +381,148 @@ void RL::KeyboardInterface()
     {
         switch (c)
         {
-        case '0': this->control.SetKeyboard(Input::Keyboard::Num0); break;
-        case '1': this->control.SetKeyboard(Input::Keyboard::Num1); break;
-        case '2': this->control.SetKeyboard(Input::Keyboard::Num2); break;
-        case '3': this->control.SetKeyboard(Input::Keyboard::Num3); break;
-        case '4': this->control.SetKeyboard(Input::Keyboard::Num4); break;
-        case '5': this->control.SetKeyboard(Input::Keyboard::Num5); break;
-        case '6': this->control.SetKeyboard(Input::Keyboard::Num6); break;
-        case '7': this->control.SetKeyboard(Input::Keyboard::Num7); break;
-        case '8': this->control.SetKeyboard(Input::Keyboard::Num8); break;
-        case '9': this->control.SetKeyboard(Input::Keyboard::Num9); break;
-        case 'a': case 'A': this->control.SetKeyboard(Input::Keyboard::A); break;
-        case 'b': case 'B': this->control.SetKeyboard(Input::Keyboard::B); break;
-        case 'c': case 'C': this->control.SetKeyboard(Input::Keyboard::C); break;
-        case 'd': case 'D': this->control.SetKeyboard(Input::Keyboard::D); break;
-        case 'e': case 'E': this->control.SetKeyboard(Input::Keyboard::E); break;
-        case 'f': case 'F': this->control.SetKeyboard(Input::Keyboard::F); break;
-        case 'g': case 'G': this->control.SetKeyboard(Input::Keyboard::G); break;
-        case 'h': case 'H': this->control.SetKeyboard(Input::Keyboard::H); break;
-        case 'i': case 'I': this->control.SetKeyboard(Input::Keyboard::I); break;
-        case 'j': case 'J': this->control.SetKeyboard(Input::Keyboard::J); break;
-        case 'k': case 'K': this->control.SetKeyboard(Input::Keyboard::K); break;
-        case 'l': case 'L': this->control.SetKeyboard(Input::Keyboard::L); break;
-        case 'm': case 'M': this->control.SetKeyboard(Input::Keyboard::M); break;
-        case 'n': case 'N': this->control.SetKeyboard(Input::Keyboard::N); break;
-        case 'o': case 'O': this->control.SetKeyboard(Input::Keyboard::O); break;
-        case 'p': case 'P': this->control.SetKeyboard(Input::Keyboard::P); break;
-        case 'q': case 'Q': this->control.SetKeyboard(Input::Keyboard::Q); break;
-        case 'r': case 'R': this->control.SetKeyboard(Input::Keyboard::R); break;
-        case 's': case 'S': this->control.SetKeyboard(Input::Keyboard::S); break;
-        case 't': case 'T': this->control.SetKeyboard(Input::Keyboard::T); break;
-        case 'u': case 'U': this->control.SetKeyboard(Input::Keyboard::U); break;
-        case 'v': case 'V': this->control.SetKeyboard(Input::Keyboard::V); break;
-        case 'w': case 'W': this->control.SetKeyboard(Input::Keyboard::W); break;
-        case 'x': case 'X': this->control.SetKeyboard(Input::Keyboard::X); break;
-        case 'y': case 'Y': this->control.SetKeyboard(Input::Keyboard::Y); break;
-        case 'z': case 'Z': this->control.SetKeyboard(Input::Keyboard::Z); break;
-        case ' ': this->control.SetKeyboard(Input::Keyboard::Space); break;
-        case '\n': case '\r': this->control.SetKeyboard(Input::Keyboard::Enter); break;
-        case 27:  // Escape sequence (for arrow keys on Unix/Linux/macOS)
+        case '0':
+            this->control.SetKeyboard(Input::Keyboard::Num0);
+            break;
+        case '1':
+            this->control.SetKeyboard(Input::Keyboard::Num1);
+            break;
+        case '2':
+            this->control.SetKeyboard(Input::Keyboard::Num2);
+            break;
+        case '3':
+            this->control.SetKeyboard(Input::Keyboard::Num3);
+            break;
+        case '4':
+            this->control.SetKeyboard(Input::Keyboard::Num4);
+            break;
+        case '5':
+            this->control.SetKeyboard(Input::Keyboard::Num5);
+            break;
+        case '6':
+            this->control.SetKeyboard(Input::Keyboard::Num6);
+            break;
+        case '7':
+            this->control.SetKeyboard(Input::Keyboard::Num7);
+            break;
+        case '8':
+            this->control.SetKeyboard(Input::Keyboard::Num8);
+            break;
+        case '9':
+            this->control.SetKeyboard(Input::Keyboard::Num9);
+            break;
+        case 'a':
+        case 'A':
+            this->control.SetKeyboard(Input::Keyboard::A);
+            break;
+        case 'b':
+        case 'B':
+            this->control.SetKeyboard(Input::Keyboard::B);
+            break;
+        case 'c':
+        case 'C':
+            this->control.SetKeyboard(Input::Keyboard::C);
+            break;
+        case 'd':
+        case 'D':
+            this->control.SetKeyboard(Input::Keyboard::D);
+            break;
+        case 'e':
+        case 'E':
+            this->control.SetKeyboard(Input::Keyboard::E);
+            break;
+        case 'f':
+        case 'F':
+            this->control.SetKeyboard(Input::Keyboard::F);
+            break;
+        case 'g':
+        case 'G':
+            this->control.SetKeyboard(Input::Keyboard::G);
+            break;
+        case 'h':
+        case 'H':
+            this->control.SetKeyboard(Input::Keyboard::H);
+            break;
+        case 'i':
+        case 'I':
+            this->control.SetKeyboard(Input::Keyboard::I);
+            break;
+        case 'j':
+        case 'J':
+            this->control.SetKeyboard(Input::Keyboard::J);
+            break;
+        case 'k':
+        case 'K':
+            this->control.SetKeyboard(Input::Keyboard::K);
+            break;
+        case 'l':
+        case 'L':
+            this->control.SetKeyboard(Input::Keyboard::L);
+            break;
+        case 'm':
+        case 'M':
+            this->control.SetKeyboard(Input::Keyboard::M);
+            break;
+        case 'n':
+        case 'N':
+            this->control.SetKeyboard(Input::Keyboard::N);
+            break;
+        case 'o':
+        case 'O':
+            this->control.SetKeyboard(Input::Keyboard::O);
+            break;
+        case 'p':
+        case 'P':
+            this->control.SetKeyboard(Input::Keyboard::P);
+            break;
+        case 'q':
+        case 'Q':
+            this->control.SetKeyboard(Input::Keyboard::Q);
+            break;
+        case 'r':
+        case 'R':
+            this->control.SetKeyboard(Input::Keyboard::R);
+            break;
+        case 's':
+        case 'S':
+            this->control.SetKeyboard(Input::Keyboard::S);
+            break;
+        case 't':
+        case 'T':
+            this->control.SetKeyboard(Input::Keyboard::T);
+            break;
+        case 'u':
+        case 'U':
+            this->control.SetKeyboard(Input::Keyboard::U);
+            break;
+        case 'v':
+        case 'V':
+            this->control.SetKeyboard(Input::Keyboard::V);
+            break;
+        case 'w':
+        case 'W':
+            this->control.SetKeyboard(Input::Keyboard::W);
+            break;
+        case 'x':
+        case 'X':
+            this->control.SetKeyboard(Input::Keyboard::X);
+            break;
+        case 'y':
+        case 'Y':
+            this->control.SetKeyboard(Input::Keyboard::Y);
+            break;
+        case 'z':
+        case 'Z':
+            this->control.SetKeyboard(Input::Keyboard::Z);
+            break;
+        case ' ':
+            this->control.SetKeyboard(Input::Keyboard::Space);
+            break;
+        case '\n':
+        case '\r':
+            this->control.SetKeyboard(Input::Keyboard::Enter);
+            break;
+        case 27: // Escape sequence (for arrow keys on Unix/Linux/macOS)
         {
             char seq[2];
             // Try to read escape sequence non-blockingly
@@ -430,11 +534,20 @@ void RL::KeyboardInterface()
                     {
                         switch (seq[1])
                         {
-                        case 'A': this->control.SetKeyboard(Input::Keyboard::Up); break;
-                        case 'B': this->control.SetKeyboard(Input::Keyboard::Down); break;
-                        case 'C': this->control.SetKeyboard(Input::Keyboard::Right); break;
-                        case 'D': this->control.SetKeyboard(Input::Keyboard::Left); break;
-                        default: break;
+                        case 'A':
+                            this->control.SetKeyboard(Input::Keyboard::Up);
+                            break;
+                        case 'B':
+                            this->control.SetKeyboard(Input::Keyboard::Down);
+                            break;
+                        case 'C':
+                            this->control.SetKeyboard(Input::Keyboard::Right);
+                            break;
+                        case 'D':
+                            this->control.SetKeyboard(Input::Keyboard::Left);
+                            break;
+                        default:
+                            break;
                         }
                     }
                 }
@@ -449,8 +562,10 @@ void RL::KeyboardInterface()
                 // Plain escape key
                 this->control.SetKeyboard(Input::Keyboard::Escape);
             }
-        } break;
-        default:  break;
+        }
+        break;
+        default:
+            break;
         }
     }
 }
@@ -466,7 +581,7 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node &node)
     return values;
 }
 
-void RL::ReadYaml(const std::string& file_path, const std::string& file_name)
+void RL::ReadYaml(const std::string &file_path, const std::string &file_name)
 {
     std::string config_path = std::string(POLICY_DIR) + "/" + file_path + "/" + file_name;
     YAML::Node config;
@@ -502,26 +617,56 @@ void RL::CSVInit(std::string robot_path)
     csv_filename += ".csv";
     std::ofstream file(csv_filename.c_str());
 
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "tau_cal_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "tau_est_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_pos_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_pos_target_" << i << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << "joint_vel_" << i << ","; }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << "tau_cal_" << i << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << "tau_est_" << i << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << "joint_pos_" << i << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << "joint_pos_target_" << i << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << "joint_vel_" << i << ",";
+    }
 
     file << std::endl;
 
     file.close();
 }
 
-void RL::CSVLogger(const std::vector<float>& torque, const std::vector<float>& tau_est, const std::vector<float>& joint_pos, const std::vector<float>& joint_pos_target, const std::vector<float>& joint_vel)
+void RL::CSVLogger(const std::vector<float> &torque, const std::vector<float> &tau_est, const std::vector<float> &joint_pos, const std::vector<float> &joint_pos_target, const std::vector<float> &joint_vel)
 {
     std::ofstream file(csv_filename.c_str(), std::ios_base::app);
 
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << torque[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << tau_est[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_pos[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_pos_target[i] << ","; }
-    for(int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i) { file << joint_vel[i] << ","; }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << torque[i] << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << tau_est[i] << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << joint_pos[i] << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << joint_pos_target[i] << ",";
+    }
+    for (int i = 0; i < this->params.Get<int>("num_of_dofs"); ++i)
+    {
+        file << joint_vel[i] << ",";
+    }
 
     file << std::endl;
 
@@ -529,11 +674,11 @@ void RL::CSVLogger(const std::vector<float>& torque, const std::vector<float>& t
 }
 
 bool RLFSMState::Interpolate(
-    float& percent,
-    const std::vector<float>& start_pos,
-    const std::vector<float>& target_pos,
+    float &percent,
+    const std::vector<float> &start_pos,
+    const std::vector<float> &target_pos,
     float duration_seconds,
-    const std::string& description,
+    const std::string &description,
     bool use_fixed_gains)
 {
     if (percent >= 1.0f)

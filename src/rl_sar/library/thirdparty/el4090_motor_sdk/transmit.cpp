@@ -12,7 +12,8 @@
 
 #include "motor_data.h"
 
-extern "C" {
+extern "C"
+{
 #include "ethercat.h"
 #include "transmit.h"
 }
@@ -21,7 +22,6 @@ spsc_queue<Queue_Msg_ptr, capacity<10>> messages[SLAVE_NUMBER];
 spsc_queue<Feedback_Msg_ptr, capacity<20>> feedback_messages[SLAVE_NUMBER][6];
 std::atomic<bool> running{false};
 std::thread runThread;
-
 
 char IOmap[4096];
 OSAL_THREAD_HANDLE checkThread;
@@ -43,12 +43,12 @@ static void degraded_handler()
 {
     printf("[EtherCAT Error] Logging error...\n");
     time_t current_time = time(NULL);
-    char* time_str = ctime(&current_time);
+    char *time_str = ctime(&current_time);
     printf("ESTOP. EtherCAT became degraded at %s.\n", time_str);
     printf("[EtherCAT Error] Stopping RT process.\n");
 }
 
-static int run_ethercat(const char* ifname)
+static int run_ethercat(const char *ifname)
 {
     int i;
     int oloop, iloop, chk;
@@ -119,8 +119,7 @@ static int run_ethercat(const char* ifname)
                 ec_send_processdata();
                 ec_receive_processdata(EC_TIMEOUTRET);
                 ec_statecheck(0, EC_STATE_OPERATIONAL, 50000);
-            }
-            while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
+            } while (chk-- && (ec_slave[0].state != EC_STATE_OPERATIONAL));
 
             if (ec_slave[0].state == EC_STATE_OPERATIONAL)
             {
@@ -163,7 +162,7 @@ static int err_iteration_count = 0;
 /**@brief Maximum number of etherCAT errors before a fault per period of loop iterations */
 #define K_ETHERCAT_ERR_MAX 20
 
-static OSAL_THREAD_FUNC ecatcheck(void* ptr)
+static OSAL_THREAD_FUNC ecatcheck(void *ptr)
 {
     (void)ptr;
     int slave = 0;
@@ -259,12 +258,12 @@ static OSAL_THREAD_FUNC ecatcheck(void* ptr)
     }
 }
 
-void EtherCAT_Init(char* ifname)
+void EtherCAT_Init(char *ifname)
 {
     int i;
     int rc;
     printf("[EtherCAT] Initializing EtherCAT\n");
-    osal_thread_create((void*)&checkThread, 128000, (void*)&ecatcheck, (void*)&ctime);
+    osal_thread_create((void *)&checkThread, 128000, (void *)&ecatcheck, (void *)&ctime);
     for (i = 1; i < 10; i++)
     {
         printf("[EtherCAT] Attempting to start EtherCAT, try %d of 10.\n", i);
@@ -281,11 +280,11 @@ void EtherCAT_Init(char* ifname)
     }
 }
 
-void EtherCAT_Transmit(EtherCAT_Msg* MasterCommand)
+void EtherCAT_Transmit(EtherCAT_Msg *MasterCommand)
 {
     for (int i = 0; i < ec_slavecount; i++)
     {
-        memcpy((void*)(ec_slave[0].outputs + i * sizeof(EtherCAT_Msg)), (void*)&(MasterCommand[i]),
+        memcpy((void *)(ec_slave[0].outputs + i * sizeof(EtherCAT_Msg)), (void *)&(MasterCommand[i]),
                sizeof(EtherCAT_Msg));
     }
     ec_send_processdata();
@@ -347,7 +346,7 @@ void EtherCAT_Data_Get()
 {
     for (int slave = 0; slave < ec_slavecount; ++slave)
     {
-        EtherCAT_Msg* slave_src = (EtherCAT_Msg*)(ec_slave[slave + 1].inputs);
+        EtherCAT_Msg *slave_src = (EtherCAT_Msg *)(ec_slave[slave + 1].inputs);
         if (slave_src)
         {
             // === 替换：使用MotorData类进行数据管理 ===
@@ -359,7 +358,7 @@ void EtherCAT_Data_Get()
         // === 替换：使用MotorData类进行数据管理 ===
         // RV_can_data_repack(&Rx_Message[slave], comm_ack, Rx_Motor_Msg[slave], slave, isConfig[slave]);
         OD_Motor_Msg motor_msgs[6] = {};
-        const auto& rxMsg = motorData.getRxMsg(slave);
+        const auto &rxMsg = motorData.getRxMsg(slave);
         EtherCAT_Msg rxMsgCopy = rxMsg;
 
         RV_can_data_repack(&rxMsgCopy, comm_ack, motor_msgs, slave, false);
@@ -375,10 +374,9 @@ void EtherCAT_Data_Get()
  * @author: Kx Zhang
  */
 #define frequency 1000
-#define POS_SPD (3.14/frequency)
+#define POS_SPD (3.14 / frequency)
 float pos_set = 0, delta_pos = POS_SPD;
 static int i = 0;
-
 
 // 使用消息队列控制电机的例程
 // void EtherCAT_Command_Set()
@@ -424,10 +422,10 @@ void EtherCAT_Command_Set()
     static int state[SLAVE_NUMBER];
     for (int slave = 0; slave < ec_slavecount; ++slave)
     {
-        EtherCAT_Msg* slave_dest = (EtherCAT_Msg*)(ec_slave[slave + 1].outputs);
+        EtherCAT_Msg *slave_dest = (EtherCAT_Msg *)(ec_slave[slave + 1].outputs);
         if (slave_dest)
         {
-            *(EtherCAT_Msg*)(ec_slave[slave + 1].outputs) = motorData.getTxMsg(slave);
+            *(EtherCAT_Msg *)(ec_slave[slave + 1].outputs) = motorData.getTxMsg(slave);
         }
     }
 }
@@ -461,7 +459,6 @@ void EtherCAT_Command_Set()
 //     if (slave_dest)
 //         *(EtherCAT_Msg *) (ec_slave[1].outputs) = Tx_Message[0];
 // }
-
 
 // 一个从站控制多个电机
 // void EtherCAT_Command_Set() {
@@ -524,10 +521,12 @@ void EtherCAT_Command_Set()
 
 // === 添加： EtherCAT 读写线程实现 ===
 EtherCATThreadManager ethercatManager;
-void EtherCATThreadManager::sendThreadFunc() {
+void EtherCATThreadManager::sendThreadFunc()
+{
     const auto send_interval = std::chrono::milliseconds(2);
 
-    while (running) {
+    while (running)
+    {
         auto cycle_start = std::chrono::steady_clock::now();
 
         if (wkc_err_iteration_count > K_ETHERCAT_ERR_PERIOD)
@@ -540,7 +539,7 @@ void EtherCATThreadManager::sendThreadFunc() {
             printf("[EtherCAT Error] Error count too high!\n");
             degraded_handler();
         }
-        
+
         EtherCAT_Command_Set();
 
         {
@@ -553,25 +552,30 @@ void EtherCATThreadManager::sendThreadFunc() {
         auto cycle_end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(cycle_end - cycle_start);
 
-        if (elapsed < send_interval) {
+        if (elapsed < send_interval)
+        {
             std::this_thread::sleep_for(send_interval - elapsed);
-        } else {
+        }
+        else
+        {
             printf("[EtherCAT Write Thread] 警告: 发送线程超时\n");
         }
-
     }
 
     printf("[EtherCAT Write Thread] 发送线程已停止。\n");
 }
 
-void EtherCATThreadManager::receiveThreadFunc() {
-    const auto recv_interval = std::chrono::milliseconds(2);
+void EtherCATThreadManager::receiveThreadFunc()
+{
+    const auto recv_interval = std::chrono::milliseconds(3);
 
-    while (running) {
+    while (running)
+    {
         auto cycle_start = std::chrono::steady_clock::now();
         {
             std::unique_lock<std::mutex> lock(ethercat_mutex_);
-            cv_.wait(lock, [this] { return send_complete_.load(); });
+            cv_.wait(lock, [this]
+                     { return send_complete_.load(); });
             send_complete_ = false;
         }
         {
@@ -596,9 +600,12 @@ void EtherCATThreadManager::receiveThreadFunc() {
         auto cycle_end = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(cycle_end - cycle_start);
 
-        if (elapsed < recv_interval) {
+        if (elapsed < recv_interval)
+        {
             std::this_thread::sleep_for(recv_interval - elapsed);
-        } else {
+        }
+        else
+        {
             printf("[EtherCAT Read Thread] 警告: 接收线程超时\n");
         }
     }
@@ -614,8 +621,10 @@ void EtherCATThreadManager::receiveThreadFunc() {
 //     return motorData.getRxMsg(slave);
 // }
 
-void EtherCATThreadManager::startThreads() {
-    if (!running) {
+void EtherCATThreadManager::startThreads()
+{
+    if (!running)
+    {
         running = true;
         sendThread = std::thread(&EtherCATThreadManager::sendThreadFunc, this);
         receiveThread = std::thread(&EtherCATThreadManager::receiveThreadFunc, this);
@@ -623,13 +632,17 @@ void EtherCATThreadManager::startThreads() {
     }
 }
 
-void EtherCATThreadManager::stopThreads() {
-    if (running) {
+void EtherCATThreadManager::stopThreads()
+{
+    if (running)
+    {
         running = false;
-        if (sendThread.joinable()) {
+        if (sendThread.joinable())
+        {
             sendThread.join();
         }
-        if (receiveThread.joinable()) {
+        if (receiveThread.joinable())
+        {
             receiveThread.join();
         }
         printf("[EtherCATThreadManager] 线程已停止。\n");
@@ -645,7 +658,6 @@ void runImpl()
         usleep(1000);
     }
 }
-
 
 void startRun()
 {
