@@ -84,6 +84,9 @@ private:
     void HardwareSend();
     void HardwareRecv();
 
+    // IMU receive
+    void IMURecv();
+
     // Joystick functions
     void InitJoystick();
     void UpdateJoystick();
@@ -96,6 +99,7 @@ private:
     std::shared_ptr<LoopFunc> loop_control;
     std::shared_ptr<LoopFunc> loop_hardware_send;
     std::shared_ptr<LoopFunc> loop_hardware_recv;
+    std::shared_ptr<LoopFunc> loop_imu_recv;
     std::shared_ptr<LoopFunc> loop_rl;
     std::shared_ptr<LoopFunc> loop_plot;
 

@@ -44,9 +44,11 @@ RL_Real::RL_Real(int argc, char **argv)
         std::cout << LOGGER::WARNING << "Using default interface: " << ethercat_ifname_ << std::endl;
     }
 
-    if (!InitEtherCAT(ethercat_ifname_.c_str()))
+    bool ethercat_ok = InitEtherCAT(ethercat_ifname_.c_str());
+    if (!ethercat_ok)
     {
-        throw std::runtime_error("EtherCAT initialization failed");
+        std::cout << LOGGER::WARNING << "EtherCAT initialization failed - continuing without motor control" << std::endl;
+        std::cout << LOGGER::WARNING << "IMU and other sensors will still function" << std::endl;
     }
 
     // Load FSM after hardware initialization
@@ -63,12 +65,14 @@ RL_Real::RL_Real(int argc, char **argv)
     // Start control loops
     this->loop_hardware_recv = std::make_shared<LoopFunc>("loop_hardware_recv", 0.002, std::bind(&RL_Real::HardwareRecv, this), 3);
     this->loop_hardware_send = std::make_shared<LoopFunc>("loop_hardware_send", 0.002, std::bind(&RL_Real::HardwareSend, this), 3);
+    this->loop_imu_recv = std::make_shared<LoopFunc>("loop_imu_recv", 0.002, std::bind(&RL_Real::IMURecv, this), 3);
     this->loop_keyboard = std::make_shared<LoopFunc>("loop_keyboard", 0.05, std::bind(&RL_Real::KeyboardInterface, this));
     this->loop_control = std::make_shared<LoopFunc>("loop_control", this->params.Get<float>("dt"), std::bind(&RL_Real::RobotControl, this));
     this->loop_rl = std::make_shared<LoopFunc>("loop_rl", this->params.Get<float>("dt") * this->params.Get<int>("decimation"), std::bind(&RL_Real::RunModel, this));
 
     this->loop_hardware_recv->start();
     this->loop_hardware_send->start();
+    this->loop_imu_recv->start();
     this->loop_keyboard->start();
     this->loop_control->start();
     this->loop_rl->start();
@@ -96,6 +100,7 @@ RL_Real::~RL_Real()
 {
     this->loop_hardware_recv->shutdown();
     this->loop_hardware_send->shutdown();
+    this->loop_imu_recv->shutdown();
     this->loop_keyboard->shutdown();
     this->loop_control->shutdown();
     this->loop_rl->shutdown();
@@ -190,36 +195,41 @@ void RL_Real::InitConfigAndBuffers()
     int imu_baud = this->params.Get<int>("imu_baud", 921600);
     int imu_timeout_ms = this->params.Get<int>("imu_timeout_ms", 20);
 
+    std::cout << LOGGER::INFO << "IMU Configuration:" << std::endl;
+    std::cout << "  Port: " << imu_port << std::endl;
+    std::cout << "  Baud Rate: " << imu_baud << " bps" << std::endl;
+    std::cout << "  Timeout: " << imu_timeout_ms << " ms" << std::endl;
+
     imu_interface_ = std::make_unique<FDILink::AHRSInterface>(imu_port, imu_baud, imu_timeout_ms);
 
-    // Set IMU data callback
+    // Set IMU data callback to update last_imu_data_ (same logic as print_imu example)
     imu_interface_->setImuCallback([this](const FDILink::ImuData &imu_data)
                                    {
-        // Store latest IMU data
-        last_imu_data_ = imu_data;
+                                       last_imu_data_ = imu_data;
 
-        // Update IMU state buffer
-        imu_state_buffer.quaternion[0] = static_cast<float>(imu_data.qw);
-        imu_state_buffer.quaternion[1] = static_cast<float>(imu_data.qx);
-        imu_state_buffer.quaternion[2] = static_cast<float>(imu_data.qy);
-        imu_state_buffer.quaternion[3] = static_cast<float>(imu_data.qz);
-
-        imu_state_buffer.gyroscope[0] = imu_data.gx;
-        imu_state_buffer.gyroscope[1] = imu_data.gy;
-        imu_state_buffer.gyroscope[2] = imu_data.gz;
-
-        imu_state_buffer.accelerometer[0] = imu_data.ax;
-        imu_state_buffer.accelerometer[1] = imu_data.ay;
-        imu_state_buffer.accelerometer[2] = imu_data.az; });
+                                       // Print every IMU data received (same as print_imu.cpp)
+                                       static int callback_count = 0;
+                                       callback_count++;
+                                       // if (callback_count % 50 == 0) {  // Print every 50 samples to avoid flooding
+                                       //     std::cout << "IMU: Q=" << imu_data.qw << "," << imu_data.qx << "," << imu_data.qy << "," << imu_data.qz
+                                       //               << " | G=" << imu_data.gx << "," << imu_data.gy << "," << imu_data.gz
+                                       //               << " | A=" << imu_data.ax << "," << imu_data.ay << "," << imu_data.az
+                                       //               << " (count: " << callback_count << ")" << std::endl;
+                                       // }
+                                   });
 
     // Start IMU interface
     if (!imu_interface_->start())
     {
-        std::cout << LOGGER::WARNING << "Failed to start IMU interface on " << imu_port << std::endl;
+        std::cout << LOGGER::WARNING << "Failed to start IMU interface on " << imu_port
+                  << " (baud: " << imu_baud << ", timeout: " << imu_timeout_ms << "ms)" << std::endl;
+        std::cout << LOGGER::WARNING << "IMU will continue attempting to connect in background..." << std::endl;
     }
     else
     {
-        std::cout << LOGGER::INFO << "IMU interface started on " << imu_port << std::endl;
+        std::cout << LOGGER::INFO << "IMU interface started on " << imu_port
+                  << " (baud: " << imu_baud << ", timeout: " << imu_timeout_ms << "ms)" << std::endl;
+        std::cout << LOGGER::INFO << "IMU data will be read by loop_imu_recv" << std::endl;
     }
 
     std::cout << LOGGER::INFO << "Config and buffers initialized" << std::endl;
@@ -349,9 +359,40 @@ void RL_Real::HardwareRecv()
     // }
     // recv_print_counter++;
 
-    // IMU data is automatically updated via callback in InitConfigAndBuffers()
     // Update velocity estimation
     UpdateVelocityEstimation();
+}
+
+void RL_Real::IMURecv()
+{
+    // Read IMU data from callback (already updated in background thread)
+    // Here we use the callback-set data for the state buffer
+    if (!imu_interface_)
+    {
+        return;
+    }
+
+    // Copy from last_imu_data_ that was set by the IMU's internal thread
+    // The IMU SDK already runs its own thread to read serial data
+    FDILink::ImuData imu_data = last_imu_data_;
+
+    // Update IMU state buffer
+    // Note: Swap accelerometer X and Y axes to match robot body frame convention
+    imu_state_buffer.quaternion[0] = static_cast<float>(imu_data.qw);
+    imu_state_buffer.quaternion[1] = static_cast<float>(imu_data.qx);
+    imu_state_buffer.quaternion[2] = static_cast<float>(imu_data.qy);
+    imu_state_buffer.quaternion[3] = static_cast<float>(imu_data.qz);
+
+    imu_state_buffer.gyroscope[0] = imu_data.gx;
+    imu_state_buffer.gyroscope[1] = imu_data.gy;
+    imu_state_buffer.gyroscope[2] = imu_data.gz;
+
+    imu_state_buffer.accelerometer[0] = imu_data.ay; // swap: use ay for x
+    imu_state_buffer.accelerometer[1] = imu_data.ax; // swap: use ax for y
+    imu_state_buffer.accelerometer[2] = imu_data.az;
+
+    // Debug printing is now done in the callback, no need to duplicate here
+    // If you want to print here instead, comment out the callback printing
 }
 
 // ==================== FSM Related ====================
@@ -369,6 +410,17 @@ void RL_Real::GetState(RobotState<float> *state)
 
     for (int i = 0; i < 3; ++i)
         state->imu.gyroscope[i] = imu_state_buffer.gyroscope[i];
+
+    // Debug: Print IMU data copied to state (every 250 calls)
+    // static int state_print_counter = 0;
+    // if (state_print_counter++ % 250 == 0)
+    // {
+    //     std::cout << "[GetState] IMU → State | Q=["
+    //               << state->imu.quaternion[0] << "," << state->imu.quaternion[1] << ","
+    //               << state->imu.quaternion[2] << "," << state->imu.quaternion[3]
+    //               << "] | G=[" << state->imu.gyroscope[0] << "," << state->imu.gyroscope[1]
+    //               << "," << state->imu.gyroscope[2] << "]" << std::endl;
+    // }
 
     // Copy motor state (already in Policy order)
     for (int i = 0; i < this->num_dofs; ++i)
@@ -416,8 +468,36 @@ void RL_Real::RunModel()
         this->obs.ang_vel = this->robot_state.imu.gyroscope;
         this->obs.base_quat = this->robot_state.imu.quaternion;
 
-        // 更新线速度估计（来自状态估计器）
-        this->obs.lin_vel = {estimated_velocity_[0], estimated_velocity_[1], estimated_velocity_[2]};
+        // Debug: Print obs IMU data before sending to policy network (every 50 calls)
+        static int obs_print_counter = 0;
+        if (obs_print_counter++ % 50 == 0)
+        {
+            std::cout << "\n========== OBSERVATION DATA (to Policy Network) ==========" << std::endl;
+            std::cout << "[Obs] lin_vel (3): [" << this->obs.lin_vel[0] << ", " << this->obs.lin_vel[1] << ", " << this->obs.lin_vel[2] << "]" << std::endl;
+            std::cout << "[Obs] ang_vel (3): [" << this->obs.ang_vel[0] << ", " << this->obs.ang_vel[1] << ", " << this->obs.ang_vel[2] << "]" << std::endl;
+            std::cout << "[Obs] gravity_vec (3): [" << this->obs.gravity_vec[0] << ", " << this->obs.gravity_vec[1] << ", " << this->obs.gravity_vec[2] << "]" << std::endl;
+            std::cout << "[Obs] commands (3): [" << this->obs.commands[0] << ", " << this->obs.commands[1] << ", " << this->obs.commands[2] << "]" << std::endl;
+            std::cout << "[Obs] dof_pos (18): [";
+            for (int i = 0; i < 18; i++)
+                std::cout << this->obs.dof_pos[i] << (i < 17 ? ", " : "");
+            std::cout << "]" << std::endl;
+            std::cout << "[Obs] dof_vel (18): [";
+            for (int i = 0; i < 18; i++)
+                std::cout << this->obs.dof_vel[i] << (i < 17 ? ", " : "");
+            std::cout << "]" << std::endl;
+            std::cout << "[Obs] actions (18): [";
+            for (int i = 0; i < 18; i++)
+                std::cout << this->obs.actions[i] << (i < 17 ? ", " : "");
+            std::cout << "]" << std::endl;
+            std::cout << "Total: 3+3+3+3+18+18+18 = 66 observations" << std::endl;
+            std::cout << "(base_quat not included - only used to compute gravity_vec)" << std::endl;
+            std::cout << "=========================================================\n"
+                      << std::endl;
+        }
+
+        // 更新线速度估计：对于四足机器人，直接设为0
+        // IMU加速度计积分会累积漂移，不适合实时速度估计
+        this->obs.lin_vel = {0.0f, 0.0f, 0.0f};
 
         // 打印调试信息
         PrintDebugInfo();
@@ -782,32 +862,34 @@ void RL_Real::UpdateVelocityEstimation()
     float gravity_body_y = 2.0f * (qy * qz + qw * qx);
     float gravity_body_z = 1.0f - 2.0f * (qx * qx + qy * qy);
 
-    // 在body系中补偿重力（假设重力为9.81 m/s^2）
-    float ax_compensated = imu_state_buffer.accelerometer[0] - gravity_body_x * 9.81f;
-    float ay_compensated = imu_state_buffer.accelerometer[1] - gravity_body_y * 9.81f;
-    float az_compensated = imu_state_buffer.accelerometer[2] - gravity_body_z * 9.81f;
+    // 在body系中补偿重力（加速度计测量的是支撑力，需要加上重力向量）
+    // 真实加速度 = 测量加速度 + 重力向量
+    float ax_compensated = imu_state_buffer.accelerometer[0] + gravity_body_x * 9.81f;
+    float ay_compensated = imu_state_buffer.accelerometer[1] + gravity_body_y * 9.81f;
+    float az_compensated = imu_state_buffer.accelerometer[2] + gravity_body_z * 9.81f;
 
-    // 速度积分（在body系）
-    float alpha = 0.98f; // 低通滤波系数，用于减少漂移
-    estimated_velocity_[0] = alpha * estimated_velocity_[0] + (1.0f - alpha) * (estimated_velocity_[0] + ax_compensated * dt);
-    estimated_velocity_[1] = alpha * estimated_velocity_[1] + (1.0f - alpha) * (estimated_velocity_[1] + ay_compensated * dt);
-    estimated_velocity_[2] = alpha * estimated_velocity_[2] + (1.0f - alpha) * (estimated_velocity_[2] + az_compensated * dt);
-
-    // 对于四足机器人，可以考虑在机器人站立时重置速度估计
-    // 这里简单处理：如果检测到几乎静止（加速度和角速度都很小），则衰减速度估计
+    // 计算补偿后的加速度幅值
     float acc_norm = std::sqrt(ax_compensated * ax_compensated + ay_compensated * ay_compensated + az_compensated * az_compensated);
     float gyro_norm = std::sqrt(
         imu_state_buffer.gyroscope[0] * imu_state_buffer.gyroscope[0] +
         imu_state_buffer.gyroscope[1] * imu_state_buffer.gyroscope[1] +
         imu_state_buffer.gyroscope[2] * imu_state_buffer.gyroscope[2]);
 
-    if (acc_norm < 0.5f && gyro_norm < 0.1f)
+    // 静止检测：如果加速度和角速度都很小，直接重置速度为0
+    if (acc_norm < 1.0f && gyro_norm < 0.2f)
     {
-        // 机器人可能静止，衰减速度估计
-        float decay = 0.95f;
-        estimated_velocity_[0] *= decay;
-        estimated_velocity_[1] *= decay;
-        estimated_velocity_[2] *= decay;
+        // 机器人静止，直接重置速度
+        estimated_velocity_[0] = 0.0f;
+        estimated_velocity_[1] = 0.0f;
+        estimated_velocity_[2] = 0.0f;
+    }
+    else
+    {
+        // 速度积分（简单欧拉积分 + 一阶低通滤波）
+        float alpha = 0.9f; // 降低滤波系数，加快响应
+        estimated_velocity_[0] = alpha * estimated_velocity_[0] + (1.0f - alpha) * ax_compensated * dt;
+        estimated_velocity_[1] = alpha * estimated_velocity_[1] + (1.0f - alpha) * ay_compensated * dt;
+        estimated_velocity_[2] = alpha * estimated_velocity_[2] + (1.0f - alpha) * az_compensated * dt;
     }
 }
 

@@ -570,8 +570,8 @@ endif()
 
 # executable for rl real el4090
 if(SYSTEM_TYPE STREQUAL "Linux")
-    # Find serial library for IMU
-    find_library(SERIAL_LIB serial REQUIRED)
+    # Build serial library for IMU from project root
+    add_subdirectory(${PROJECT_ROOT_DIR}/serial ${CMAKE_CURRENT_BINARY_DIR}/serial)
     
     # Build el4090 motor SDK
     add_subdirectory(library/thirdparty/el4090_motor_sdk)
@@ -587,7 +587,7 @@ if(SYSTEM_TYPE STREQUAL "Linux")
         Threads::Threads
         el4090_motor_control
         fdilink_ahrs
-        ${SERIAL_LIB}
+        serial
     )
     
     # Add include directories for el4090 motor SDK and IMU SDK

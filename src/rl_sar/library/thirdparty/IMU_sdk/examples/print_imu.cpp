@@ -5,8 +5,8 @@
 
 int main(int argc, char** argv)
 {
-  std::string port = "/dev/ttyTHS1";
-  int baud = 115200;
+  std::string port = "/dev/ttyUSB0";
+  int baud = 921600;
   if (argc >= 2) port = argv[1];
   if (argc >= 3) baud = std::stoi(argv[2]);
 

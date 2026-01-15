@@ -4,10 +4,8 @@ project(fdilink_ahrs_standalone)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find serial library (you may need to install wjwwood/serial)
-# For demonstration, we assume it's available via find_package or as a system library
-# If not available, you can build it from source or use pkg-config
-find_library(SERIAL_LIB serial REQUIRED)
+# Serial library is built from the serial subdirectory in the root project
+# No need to find_library, we will link against the serial target directly
 
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -20,7 +18,7 @@ add_library(fdilink_ahrs STATIC
 )
 
 target_link_libraries(fdilink_ahrs
-  ${SERIAL_LIB}
+  serial
   pthread
 )
 
