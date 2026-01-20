@@ -89,9 +89,11 @@ RL_Real::RL_Real(int argc, char **argv)
     this->loop_plot->start();
 #endif
 
-#ifdef CSV_LOGGER
+// #ifdef CSV_LOGGER
+//     this->CSVInit(this->robot_name);
+// #endif
+
     this->CSVInit(this->robot_name);
-#endif
 
     std::cout << LOGGER::INFO << "RL_Real initialized (" << this->num_dofs << " DOFs)" << std::endl;
 }
@@ -182,7 +184,7 @@ void RL_Real::InitConfigAndBuffers()
     // Initialize IMU state
     imu_state_buffer.quaternion = {1.0f, 0.0f, 0.0f, 0.0f};
     imu_state_buffer.gyroscope = {0.0f, 0.0f, 0.0f};
-    imu_state_buffer.accelerometer = {0.0f, 0.0f, 9.81f};
+    imu_state_buffer.accelerometer = {0.0f, 0.0f, 0.0f};
 
     // Initialize velocity estimation
     estimated_velocity_ = {0.0f, 0.0f, 0.0f};
@@ -206,16 +208,6 @@ void RL_Real::InitConfigAndBuffers()
     imu_interface_->setImuCallback([this](const FDILink::ImuData &imu_data)
                                    {
                                        last_imu_data_ = imu_data;
-
-                                       // Print every IMU data received (same as print_imu.cpp)
-                                       static int callback_count = 0;
-                                       callback_count++;
-                                       // if (callback_count % 50 == 0) {  // Print every 50 samples to avoid flooding
-                                       //     std::cout << "IMU: Q=" << imu_data.qw << "," << imu_data.qx << "," << imu_data.qy << "," << imu_data.qz
-                                       //               << " | G=" << imu_data.gx << "," << imu_data.gy << "," << imu_data.gz
-                                       //               << " | A=" << imu_data.ax << "," << imu_data.ay << "," << imu_data.az
-                                       //               << " (count: " << callback_count << ")" << std::endl;
-                                       // }
                                    });
 
     // Start IMU interface
@@ -323,43 +315,6 @@ void RL_Real::HardwareRecv()
         }
     }
 
-    // // 打印表格
-    // if (should_print)
-    // {
-    //     // 覆盖型输出：清屏并移动光标到顶部
-    //     if (!first_print)
-    //     {
-    //         std::cout << "\033[2J\033[H"; // 清屏并移动到home位置
-    //     }
-    //     first_print = false;
-
-    //     std::cout << "========== Motor Status (URDF Coordinates) ==========" << std::endl;
-    //     std::cout << std::left << std::setw(8) << "Motor"
-    //               << std::setw(12) << "Feedback"
-    //               << std::setw(12) << "Command"
-    //               << std::setw(12) << "Error" << std::endl;
-    //     std::cout << "-----------------------------------------------------" << std::endl;
-
-    //     for (int policy_idx = 0; policy_idx < num_dofs; ++policy_idx)
-    //     {
-    //         int motor_id = policy_to_motor_id_[policy_idx];
-    //         float feedback = motor_state_buffer.position[policy_idx];
-    //         float command = motor_command_buffer.target_position[policy_idx];
-    //         float error = feedback - command;
-
-    //         std::cout << std::left << std::setw(8) << motor_id
-    //                   << std::fixed << std::setprecision(4)
-    //                   << std::setw(12) << feedback
-    //                   << std::setw(12) << command
-    //                   << std::setw(12) << error << std::endl;
-    //     }
-
-    //     std::cout << "=====================================================" << std::endl;
-    //     std::cout << std::flush; // 强制刷新输出缓冲区
-    // }
-    // recv_print_counter++;
-
-    // Update velocity estimation
     UpdateVelocityEstimation();
 }
 
@@ -376,20 +331,28 @@ void RL_Real::IMURecv()
     // The IMU SDK already runs its own thread to read serial data
     FDILink::ImuData imu_data = last_imu_data_;
 
-    // Update IMU state buffer
-    // Note: Swap accelerometer X and Y axes to match robot body frame convention
+    // Update IMU state buffer with coordinate transformation
+    // IMU frame: X forward, Y right, Z down
+    // URDF frame: X forward, Y left, Z up
+    // Transformation: x_urdf = x_imu, y_urdf = -y_imu, z_urdf = -z_imu
+    // This is equivalent to a 180° rotation around the X axis
+
+    // Quaternion transformation: (w, x, y, z)_imu -> (w, x, -y, -z)_urdf
+    // For rotation around X axis by 180°, only y and z components change sign
     imu_state_buffer.quaternion[0] = static_cast<float>(imu_data.qw);
     imu_state_buffer.quaternion[1] = static_cast<float>(imu_data.qx);
-    imu_state_buffer.quaternion[2] = static_cast<float>(imu_data.qy);
-    imu_state_buffer.quaternion[3] = static_cast<float>(imu_data.qz);
+    imu_state_buffer.quaternion[2] = -static_cast<float>(imu_data.qy); // Y component inverted
+    imu_state_buffer.quaternion[3] = -static_cast<float>(imu_data.qz); // Z component inverted
 
+    // Angular velocity transformation: (ωx, ωy, ωz)_imu -> (ωx, -ωy, -ωz)_urdf
     imu_state_buffer.gyroscope[0] = imu_data.gx;
-    imu_state_buffer.gyroscope[1] = imu_data.gy;
-    imu_state_buffer.gyroscope[2] = imu_data.gz;
+    imu_state_buffer.gyroscope[1] = -imu_data.gy; // Y axis inverted
+    imu_state_buffer.gyroscope[2] = -imu_data.gz; // Z axis inverted
 
-    imu_state_buffer.accelerometer[0] = imu_data.ay; // swap: use ay for x
-    imu_state_buffer.accelerometer[1] = imu_data.ax; // swap: use ax for y
-    imu_state_buffer.accelerometer[2] = imu_data.az;
+    // Linear acceleration transformation: (ax, ay, az)_imu -> (ax, -ay, -az)_urdf
+    imu_state_buffer.accelerometer[0] = imu_data.ax;
+    imu_state_buffer.accelerometer[1] = -imu_data.ay; // Y axis inverted
+    imu_state_buffer.accelerometer[2] = -imu_data.az; // Z axis inverted
 
     // Debug printing is now done in the callback, no need to duplicate here
     // If you want to print here instead, comment out the callback printing
@@ -453,9 +416,11 @@ void RL_Real::RobotControl()
     this->control.ClearInput();
     this->SetCommand(&this->robot_command);
 
-#ifdef CSV_LOGGER
+// #ifdef CSV_LOGGER
+//     this->LogToCSV();
+// #endif
+
     this->LogToCSV();
-#endif
 }
 
 void RL_Real::RunModel()
@@ -465,12 +430,50 @@ void RL_Real::RunModel()
         this->episode_length_buf += 1;
 
         // 更新IMU数据
-        this->obs.ang_vel = this->robot_state.imu.gyroscope;
         this->obs.base_quat = this->robot_state.imu.quaternion;
+
+        // 1. 角速度：直接使用IMU陀螺仪数据（body frame）
+        this->obs.ang_vel = this->robot_state.imu.gyroscope;
+
+        // 2. 重力向量：使用四元数将世界坐标系重力向量旋转到body frame
+        // 世界坐标系重力加速度向量为 [0, 0, -g]（向下，指向地心）
+        // 使用四元数旋转公式: v_body = R(q) * v_world
+        // 其中 R(q) 是由四元数q构成的旋转矩阵
+        float qw = this->obs.base_quat[0];
+        float qx = this->obs.base_quat[1];
+        float qy = this->obs.base_quat[2];
+        float qz = this->obs.base_quat[3];
+
+        // 计算 R(q) * [0, 0, -1] = -R(q)的第三列
+        // 重力向量指向地心（向下），在body frame中应该根据姿态变化
+        // 如果机器人水平放置，gravity_vec应该是[0, 0, -1]（指向地面）
+        this->obs.gravity_vec[0] = -2.0f * (qx * qz + qw * qy);
+        this->obs.gravity_vec[1] = -2.0f * (qy * qz - qw * qx);
+        this->obs.gravity_vec[2] = -(1.0f - 2.0f * (qx * qx + qy * qy));
+
+        // 归一化重力向量（确保长度为1）
+        float grav_norm = std::sqrt(this->obs.gravity_vec[0] * this->obs.gravity_vec[0] +
+                                    this->obs.gravity_vec[1] * this->obs.gravity_vec[1] +
+                                    this->obs.gravity_vec[2] * this->obs.gravity_vec[2]);
+        if (grav_norm > 0.01f)
+        {
+            this->obs.gravity_vec[0] /= grav_norm;
+            this->obs.gravity_vec[1] /= grav_norm;
+            this->obs.gravity_vec[2] /= grav_norm;
+        }
+
+        // 3. 线速度：使用改进的速度估计（从UpdateVelocityEstimation获取）
+        this->obs.lin_vel[0] = estimated_velocity_[0];
+        this->obs.lin_vel[1] = estimated_velocity_[1];
+        // this->obs.lin_vel[2] = estimated_velocity_[2];
+        this->obs.lin_vel[2] = 0;
+
+        // 打印调试信息
+        PrintDebugInfo();
 
         // Debug: Print obs IMU data before sending to policy network (every 50 calls)
         static int obs_print_counter = 0;
-        if (obs_print_counter++ % 50 == 0)
+        if (obs_print_counter++ % 25 == 0)
         {
             std::cout << "\n========== OBSERVATION DATA (to Policy Network) ==========" << std::endl;
             std::cout << "[Obs] lin_vel (3): [" << this->obs.lin_vel[0] << ", " << this->obs.lin_vel[1] << ", " << this->obs.lin_vel[2] << "]" << std::endl;
@@ -493,27 +496,6 @@ void RL_Real::RunModel()
             std::cout << "(base_quat not included - only used to compute gravity_vec)" << std::endl;
             std::cout << "=========================================================\n"
                       << std::endl;
-        }
-
-        // 更新线速度估计：对于四足机器人，直接设为0
-        // IMU加速度计积分会累积漂移，不适合实时速度估计
-        this->obs.lin_vel = {0.0f, 0.0f, 0.0f};
-
-        // 打印调试信息
-        PrintDebugInfo();
-
-        // gravity_vec: 从IMU加速度计归一化得到重力方向
-        // 在静止时，加速度计读数 ≈ -重力向量
-        auto acc = this->robot_state.imu.accelerometer;
-        float acc_norm = std::sqrt(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
-        if (acc_norm > 0.1f)
-        {
-            this->obs.gravity_vec = {-acc[0] / acc_norm, -acc[1] / acc_norm, -acc[2] / acc_norm};
-        }
-        else
-        {
-            // 如果加速度计读数过小，使用默认重力向量
-            this->obs.gravity_vec = {0.0f, 0.0f, -1.0f};
         }
 
         // 更新命令和关节状态
@@ -621,11 +603,12 @@ void RL_Real::CmdvelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 }
 #endif
 
-#ifdef CSV_LOGGER
+
 void RL_Real::LogToCSV()
 {
     if (csv_file.is_open())
     {
+        std::cout<<LOGGER::DEBUG << "Logging data to CSV..." << std::endl;
         csv_file << this->episode_length_buf;
         for (int i = 0; i < this->num_dofs; ++i)
             csv_file << "," << this->robot_state.motor_state.q[i];
@@ -638,7 +621,7 @@ void RL_Real::LogToCSV()
         csv_file << std::endl;
     }
 }
-#endif
+
 
 // ==================== Joystick Functions ====================
 
@@ -801,32 +784,6 @@ void RL_Real::UpdateJoystick()
     {
         this->control.yaw = -axis_values_[3]; // Right stick X (yaw)
     }
-
-    // // 详细打印joystick状态
-    // if (should_print)
-    // {
-    //     std::cout << "=====================================" << std::endl;
-    //     std::cout << "========== Joystick Status ==========" << std::endl;
-    //     std::cout << "Buttons: ";
-    //     for (auto &btn : button_states_)
-    //     {
-    //         if (btn.second)
-    //             std::cout << btn.first << "=1 ";
-    //     }
-    //     std::cout << std::endl;
-
-    //     std::cout << "Axes: ";
-    //     for (auto &axis : axis_values_)
-    //     {
-    //         std::cout << axis.first << "=" << std::fixed << std::setprecision(2) << axis.second << " ";
-    //     }
-    //     std::cout << std::endl;
-
-    //     std::cout << "Control: X=" << this->control.x
-    //               << " Y=" << this->control.y
-    //               << " Yaw=" << this->control.yaw << std::endl;
-    //     std::cout << "=====================================" << std::endl;
-    // }
 }
 
 void RL_Real::ShutdownJoystick()
@@ -842,7 +799,7 @@ void RL_Real::ShutdownJoystick()
 
 void RL_Real::UpdateVelocityEstimation()
 {
-    // 简单的加速度积分估计（带重力补偿和低通滤波）
+    // 改进的速度估计算法：使用IMU加速度积分（带重力补偿和漂移抑制）
     auto current_time = std::chrono::steady_clock::now();
     float dt = std::chrono::duration<float>(current_time - last_vel_update_time_).count();
     last_vel_update_time_ = current_time;
@@ -850,53 +807,71 @@ void RL_Real::UpdateVelocityEstimation()
     if (dt > 0.01f || dt < 0.0001f)
         return; // 跳过异常时间间隔
 
-    // 从四元数获取旋转矩阵（将加速度从body系转到world系）
+    // 获取四元数，用于重力补偿
     float qw = imu_state_buffer.quaternion[0];
     float qx = imu_state_buffer.quaternion[1];
     float qy = imu_state_buffer.quaternion[2];
     float qz = imu_state_buffer.quaternion[3];
 
-    // 计算从body到world的旋转矩阵的第三列（z轴方向）
-    // 这可以用来估计重力在body系中的方向
-    float gravity_body_x = 2.0f * (qx * qz - qw * qy);
-    float gravity_body_y = 2.0f * (qy * qz + qw * qx);
-    float gravity_body_z = 1.0f - 2.0f * (qx * qx + qy * qy);
+    // 计算重力在body系中的方向（世界坐标系 [0, 0, -1] 旋转到body系）
+    float gravity_body_x = -2.0f * (qx * qz - qw * qy);
+    float gravity_body_y = -2.0f * (qy * qz + qw * qx);
+    float gravity_body_z = -(1.0f - 2.0f * (qx * qx + qy * qy));
 
-    // 在body系中补偿重力（加速度计测量的是支撑力，需要加上重力向量）
-    // 真实加速度 = 测量加速度 + 重力向量
-    float ax_compensated = imu_state_buffer.accelerometer[0] + gravity_body_x * 9.81f;
-    float ay_compensated = imu_state_buffer.accelerometer[1] + gravity_body_y * 9.81f;
-    float az_compensated = imu_state_buffer.accelerometer[2] + gravity_body_z * 9.81f;
+    // 重力补偿：加速度计测量的是比力（specific force = a - g）
+    // 真实加速度 = 测量值 - gravity_body * g
+    const float g = 9.81f; // 重力加速度
+    float ax_compensated = imu_state_buffer.accelerometer[0] - gravity_body_x * g;
+    float ay_compensated = imu_state_buffer.accelerometer[1] - gravity_body_y * g;
+    float az_compensated = imu_state_buffer.accelerometer[2] + 9.8 - gravity_body_z * g;
 
-    // 计算补偿后的加速度幅值
-    float acc_norm = std::sqrt(ax_compensated * ax_compensated + ay_compensated * ay_compensated + az_compensated * az_compensated);
+    // 计算角速度和补偿后加速度的幅值
     float gyro_norm = std::sqrt(
         imu_state_buffer.gyroscope[0] * imu_state_buffer.gyroscope[0] +
         imu_state_buffer.gyroscope[1] * imu_state_buffer.gyroscope[1] +
         imu_state_buffer.gyroscope[2] * imu_state_buffer.gyroscope[2]);
+    float acc_norm = std::sqrt(
+        ax_compensated * ax_compensated +
+        ay_compensated * ay_compensated +
+        az_compensated * az_compensated);
 
-    // 静止检测：如果加速度和角速度都很小，直接重置速度为0
-    if (acc_norm < 1.0f && gyro_norm < 0.2f)
+    // 静止检测：加速度和角速度都很小时，施加强衰减抑制漂移
+    float decay_factor = 0.95f; // 默认衰减
+    if (acc_norm < 0.5f && gyro_norm < 0.1f)
     {
-        // 机器人静止，直接重置速度
-        estimated_velocity_[0] = 0.0f;
-        estimated_velocity_[1] = 0.0f;
-        estimated_velocity_[2] = 0.0f;
+        // 机器人可能静止，强烈衰减速度以抑制漂移
+        decay_factor = 0.7f;
     }
-    else
+
+    // 速度积分（梯形积分 + 衰减滤波）
+    // v(t+dt) = decay * v(t) + 0.5 * (a(t) + a(t-dt)) * dt
+    estimated_velocity_[0] = decay_factor * estimated_velocity_[0] +
+                             0.5f * (ax_compensated + last_accelerometer_[0]) * dt;
+    estimated_velocity_[1] = decay_factor * estimated_velocity_[1] +
+                             0.5f * (ay_compensated + last_accelerometer_[1]) * dt;
+    estimated_velocity_[2] = decay_factor * estimated_velocity_[2] +
+                             0.5f * (az_compensated + last_accelerometer_[2]) * dt;
+
+    // 保存当前加速度供下次使用
+    last_accelerometer_[0] = ax_compensated;
+    last_accelerometer_[1] = ay_compensated;
+    last_accelerometer_[2] = az_compensated;
+
+    // 速度限幅（防止异常值）
+    const float max_vel = 2.0f; // 最大速度 2.0 m/s
+    for (int i = 0; i < 3; ++i)
     {
-        // 速度积分（简单欧拉积分 + 一阶低通滤波）
-        float alpha = 0.9f; // 降低滤波系数，加快响应
-        estimated_velocity_[0] = alpha * estimated_velocity_[0] + (1.0f - alpha) * ax_compensated * dt;
-        estimated_velocity_[1] = alpha * estimated_velocity_[1] + (1.0f - alpha) * ay_compensated * dt;
-        estimated_velocity_[2] = alpha * estimated_velocity_[2] + (1.0f - alpha) * az_compensated * dt;
+        if (estimated_velocity_[i] > max_vel)
+            estimated_velocity_[i] = max_vel;
+        else if (estimated_velocity_[i] < -max_vel)
+            estimated_velocity_[i] = -max_vel;
     }
 }
 
 void RL_Real::PrintDebugInfo()
 {
     debug_print_counter_++;
-    if (debug_print_counter_ % 100 != 0)
+    if (debug_print_counter_ % 25 != 0)
         return;
 
     std::cout << "\n========== Debug Info (Episode: " << this->episode_length_buf << ") ==========\n";

@@ -604,6 +604,8 @@ void RL::ReadYaml(const std::string &file_path, const std::string &file_name)
 
 void RL::CSVInit(std::string robot_path)
 {
+    // LOGGER MODE COUT
+    std::cout<<LOGGER::INFO<<"CSV Init called"<<std::endl;
     csv_filename = std::string(POLICY_DIR) + "/" + robot_path + "/motor";
 
     // Uncomment these lines if need timestamp for file name

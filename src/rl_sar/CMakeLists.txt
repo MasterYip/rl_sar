@@ -29,6 +29,11 @@ endif()
 # MuJoCo simulator option
 set(USE_MUJOCO OFF CACHE BOOL "Build with MuJoCo simulator support")
 
+option(CSV_LOGGER "Enable CSV logger" OFF)
+if(CSV_LOGGER)
+add_definitions(-DCSV_LOGGER)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
