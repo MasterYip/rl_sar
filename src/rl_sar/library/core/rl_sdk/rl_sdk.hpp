@@ -16,6 +16,10 @@
 #include <memory>
 #include <fstream>
 #include <mutex>
+#include <fcntl.h>
+#include <linux/joystick.h>
+#include <array>
+#include <cstring>
 
 #include <yaml-cpp/yaml.h>
 #include "fsm.hpp"
@@ -186,7 +190,7 @@ class RL
 {
 public:
     RL() {};
-    ~RL() {};
+    ~RL() { if (gamepad_fd_ >= 0) close(gamepad_fd_); };
 
     YamlParams params;
     Observations<float> obs;
@@ -229,6 +233,7 @@ public:
     // control
     Control control;
     void KeyboardInterface();
+    void GamepadInterface();
 
     // history buffer
     ObservationBuffer history_obs_buf;
@@ -237,6 +242,7 @@ public:
     // others
     int motiontime = 0;
     std::string robot_name, config_name;
+    std::string gamepad_device_path = "";  // empty = disabled; set to e.g. "/dev/input/js0" to enable
     bool simulation_running = true;
     std::string ang_vel_axis = "body";  // "world" or "body"
     unsigned long long episode_length_buf = 0;
@@ -259,6 +265,16 @@ public:
 
     // thread safety
     std::mutex model_mutex;
+
+    // gamepad state
+    int gamepad_fd_ = -1;
+    std::array<int, 16> gamepad_buttons_{};
+    std::array<float, 8> gamepad_axes_raw_{};
+    float gamepad_lx_ = 0.0f;
+    float gamepad_ly_ = 0.0f;
+    float gamepad_rx_ = 0.0f;
+    int gamepad_dpad_x_ = 0;
+    int gamepad_dpad_y_ = 0;
 };
 
 class RLFSMState : public FSMState

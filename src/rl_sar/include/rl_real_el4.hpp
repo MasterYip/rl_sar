@@ -8,15 +8,17 @@
 
 #include "rl_sdk.hpp"
 #include "fsm_all.hpp"
-#include <memory>
+#include <string>
+#include <chrono>
+#include <thread>
 
-class RL_El4
+class RL_El4 : public RL
 {
 public:
-    RL_El4() : robot_name_("el4")
+    RL_El4(const std::string& gamepad_device = "/dev/input/js0")
     {
-        rl_ = std::make_unique<RL>();
-        rl_->robot_name = robot_name_;
+        this->robot_name = "el4";
+        this->gamepad_device_path = gamepad_device;
     }
 
     ~RL_El4() = default;
@@ -26,14 +28,32 @@ public:
         try
         {
             // Initialize robot parameters from base.yaml
-            std::string base_config_path = robot_name_ + "/base";
-            rl_->params.LoadYaml(base_config_path);
+            this->ReadYaml(this->robot_name, "base.yaml");
 
-            // Initialize FSM
-            rl_->fsm.Initialize(rl_.get(), robot_name_);
+            // Initialize FSM via the FSMManager (same pattern as G1, A1, Go2, Lite3)
+            if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
+            {
+                auto fsm_ptr = FSMManager::GetInstance().CreateFSM(this->robot_name, this);
+                if (fsm_ptr)
+                {
+                    this->fsm = *fsm_ptr;
+                }
+                else
+                {
+                    std::cout << LOGGER::ERROR << "[FSM] Failed to create FSM for: " << this->robot_name << std::endl;
+                    return false;
+                }
+            }
+            else
+            {
+                std::cout << LOGGER::ERROR << "[FSM] No FSM registered for robot: " << this->robot_name << std::endl;
+                return false;
+            }
 
-            // Initialize control interface (gamepad/keyboard)
-            rl_->control.Init();
+            // Initialize joint count, outputs, and control
+            this->InitJointNum(this->params.Get<int>("num_of_dofs"));
+            this->InitOutputs();
+            this->InitControl();
 
             std::cout << LOGGER::INFO << "El4 robot initialization complete" << std::endl;
             return true;
@@ -47,8 +67,7 @@ public:
 
     void Run()
     {
-        // Main control loop
-        const float control_dt = 0.002f; // 500 Hz control loop
+        const float control_dt = this->params.Get<float>("dt", 0.002f); // 500 Hz default
         auto last_time = std::chrono::steady_clock::now();
 
         while (true)
@@ -58,17 +77,23 @@ public:
 
             if (dt >= control_dt)
             {
-                // Update control inputs
-                rl_->control.Update();
-
-                // Run FSM
-                rl_->fsm.Run();
-
-                // Send motor commands
-                SendMotorCommands();
-
-                // Read motor states
+                // 1. Read motor states into robot_state (hardware I/O)
                 ReadMotorStates();
+
+                // 2. Read keyboard and gamepad input (updates control struct)
+                this->KeyboardInterface();
+                this->GamepadInterface();
+
+                // 3. Run FSM + axis commands + navigation toggle
+                //    StateController handles FSM transitions based on
+                //    keyboard/gamepad input AND axis accumulation (W/S/A/D/Q/E)
+                this->StateController(&this->robot_state, &this->robot_command);
+
+                // 4. Clear transient input for next control cycle
+                this->control.ClearInput();
+
+                // 5. Send motor commands from robot_command (hardware I/O)
+                SendMotorCommands();
 
                 last_time = current_time;
             }
@@ -79,21 +104,41 @@ public:
     }
 
 private:
+    // --- Pure virtual method implementations (stubs for now) ---
+    std::vector<float> Forward() override
+    {
+        // TODO: Run RL inference
+        return std::vector<float>(this->params.Get<int>("num_of_dofs"), 0.0f);
+    }
+
+    void GetState(RobotState<float> *state) override
+    {
+        // Overridden by ReadMotorStates() in the control loop.
+        // This is called by RLFSMState internals (RLControl, etc).
+        *state = this->robot_state;
+    }
+
+    void SetCommand(const RobotCommand<float> *command) override
+    {
+        // Overridden by SendMotorCommands() in the control loop.
+        this->robot_command = *command;
+    }
+
     void SendMotorCommands()
     {
         // TODO: Implement actual hardware communication
         // This is a placeholder - you need to implement the specific communication protocol
         // for your El4 robot hardware (e.g., CAN bus, serial, etc.)
-        
+
         // Example structure:
         // for (int i = 0; i < num_dofs; ++i)
         // {
-        //     hardware_interface.SetMotorCommand(i, 
-        //         rl_->fsm.GetCurrentCommand().motor_command.q[i],
-        //         rl_->fsm.GetCurrentCommand().motor_command.dq[i],
-        //         rl_->fsm.GetCurrentCommand().motor_command.kp[i],
-        //         rl_->fsm.GetCurrentCommand().motor_command.kd[i],
-        //         rl_->fsm.GetCurrentCommand().motor_command.tau[i]);
+        //     hardware_interface.SetMotorCommand(i,
+        //         this->robot_command.motor_command.q[i],
+        //         this->robot_command.motor_command.dq[i],
+        //         this->robot_command.motor_command.kp[i],
+        //         this->robot_command.motor_command.kd[i],
+        //         this->robot_command.motor_command.tau[i]);
         // }
     }
 
@@ -102,24 +147,21 @@ private:
         // TODO: Implement actual hardware communication
         // This is a placeholder - you need to implement the specific communication protocol
         // for your El4 robot hardware
-        
+
         // Example structure:
         // for (int i = 0; i < num_dofs; ++i)
         // {
-        //     rl_->fsm.GetCurrentState().motor_state.q[i] = hardware_interface.GetPosition(i);
-        //     rl_->fsm.GetCurrentState().motor_state.dq[i] = hardware_interface.GetVelocity(i);
-        //     rl_->fsm.GetCurrentState().motor_state.tau[i] = hardware_interface.GetTorque(i);
+        //     this->robot_state.motor_state.q[i] = hardware_interface.GetPosition(i);
+        //     this->robot_state.motor_state.dq[i] = hardware_interface.GetVelocity(i);
+        //     this->robot_state.motor_state.tau_est[i] = hardware_interface.GetTorque(i);
         // }
-        
+
         // // Read IMU data
         // auto imu_data = hardware_interface.GetIMUData();
-        // rl_->fsm.GetCurrentState().imu.quaternion = imu_data.quaternion;
-        // rl_->fsm.GetCurrentState().imu.gyroscope = imu_data.gyroscope;
-        // rl_->fsm.GetCurrentState().imu.accelerometer = imu_data.accelerometer;
+        // this->robot_state.imu.quaternion = imu_data.quaternion;
+        // this->robot_state.imu.gyroscope = imu_data.gyroscope;
+        // this->robot_state.imu.accelerometer = imu_data.accelerometer;
     }
-
-    std::string robot_name_;
-    std::unique_ptr<RL> rl_;
 };
 
 #endif // RL_REAL_EL4_HPP

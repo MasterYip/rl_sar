@@ -4,6 +4,8 @@
  */
 
 #include "rl_sdk.hpp"
+#include <cmath>
+#include <cstring>
 
 void RL::StateController(const RobotState<float>* state, RobotCommand<float>* command)
 {
@@ -212,6 +214,14 @@ void RL::InitControl()
     this->control.x = 0.0f;
     this->control.y = 0.0f;
     this->control.yaw = 0.0f;
+    // Initialize gamepad state
+    this->gamepad_buttons_.fill(0);
+    this->gamepad_axes_raw_.fill(0.0f);
+    this->gamepad_lx_ = 0.0f;
+    this->gamepad_ly_ = 0.0f;
+    this->gamepad_rx_ = 0.0f;
+    this->gamepad_dpad_x_ = 0;
+    this->gamepad_dpad_y_ = 0;
 }
 
 void RL::InitJointNum(size_t num_joints)
@@ -453,6 +463,133 @@ void RL::KeyboardInterface()
         default:  break;
         }
     }
+}
+
+void RL::GamepadInterface()
+{
+    // Skip if no custom joystick device configured
+    if (gamepad_device_path.empty()) return;
+
+    // Lazy initialization on first call
+    if (gamepad_fd_ < 0)
+    {
+        gamepad_fd_ = open(gamepad_device_path.c_str(), O_RDONLY | O_NONBLOCK);
+        if (gamepad_fd_ < 0)
+        {
+            static bool logged = false;
+            if (!logged)
+            {
+                std::cout << LOGGER::WARNING << "GamepadInterface: failed to open '"
+                          << gamepad_device_path << "' (" << strerror(errno)
+                          << "). Is the gamepad connected?" << std::endl;
+                logged = true;
+            }
+            return;
+        }
+        std::cout << LOGGER::INFO << "GamepadInterface: reading from '"
+                  << gamepad_device_path << "'" << std::endl;
+    }
+
+    // Poll all pending js_event structs (non-blocking)
+    struct js_event ev;
+    ssize_t n;
+    while ((n = read(gamepad_fd_, &ev, sizeof(ev))) == sizeof(ev))
+    {
+        switch (ev.type & ~JS_EVENT_INIT)
+        {
+        case JS_EVENT_BUTTON:
+            if (ev.number < static_cast<int>(gamepad_buttons_.size()))
+                gamepad_buttons_[ev.number] = ev.value;
+            break;
+        case JS_EVENT_AXIS:
+            if (ev.number < static_cast<int>(gamepad_axes_raw_.size()))
+            {
+                gamepad_axes_raw_[ev.number] = ev.value;
+
+                // Normalize stick axes 0(lx),1(ly),3(rx),4(ry) to [-1, 1] with deadband
+                if (ev.number == 0 || ev.number == 1 ||
+                    ev.number == 3 || ev.number == 4)
+                {
+                    float val = std::clamp(ev.value / 32767.0f, -1.0f, 1.0f);
+                    if (std::fabs(val) < 0.05f) val = 0.0f;
+
+                    if (ev.number == 0)      gamepad_lx_ = val;
+                    else if (ev.number == 1) gamepad_ly_ = -val; // invert left Y
+                    else if (ev.number == 3) gamepad_rx_ = val;
+                    // axis 4 (right Y) not used for locomotion, skipped
+                }
+                // D-pad axes 6 (dpad_x), 7 (dpad_y) — discrete: -32767, 0, +32767
+                if (ev.number == 6)
+                    gamepad_dpad_x_ = (ev.value > 16384) ? 1 :
+                                      (ev.value < -16384) ? -1 : 0;
+                if (ev.number == 7)
+                    gamepad_dpad_y_ = (ev.value > 16384) ? 1 :
+                                      (ev.value < -16384) ? -1 : 0;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    // --- Map physical buttons to Input::Gamepad enum ---
+    bool lb = gamepad_buttons_[4] != 0;
+    bool rb = gamepad_buttons_[5] != 0;
+    bool a  = gamepad_buttons_[0] != 0;
+    bool b  = gamepad_buttons_[1] != 0;
+    bool x  = gamepad_buttons_[2] != 0;
+    bool y  = gamepad_buttons_[3] != 0;
+    bool ls = gamepad_buttons_[9] != 0;
+    bool rs = gamepad_buttons_[10] != 0;
+    // D-pad: primary from axes 6/7, fallback to buttons 11-14
+    bool up    = (gamepad_dpad_y_ == -1) || (gamepad_buttons_[11] != 0);
+    bool down  = (gamepad_dpad_y_ ==  1) || (gamepad_buttons_[12] != 0);
+    bool left  = (gamepad_dpad_x_ == -1) || (gamepad_buttons_[13] != 0);
+    bool right = (gamepad_dpad_x_ ==  1) || (gamepad_buttons_[14] != 0);
+
+    // Combos first (higher priority)
+    // LB combos
+    if (lb && a)      control.SetGamepad(Input::Gamepad::LB_A);
+    else if (lb && b)      control.SetGamepad(Input::Gamepad::LB_B);
+    else if (lb && x)      control.SetGamepad(Input::Gamepad::LB_X);
+    else if (lb && y)      control.SetGamepad(Input::Gamepad::LB_Y);
+    else if (lb && ls)     control.SetGamepad(Input::Gamepad::LB_LStick);
+    else if (lb && rs)     control.SetGamepad(Input::Gamepad::LB_RStick);
+    else if (lb && up)     control.SetGamepad(Input::Gamepad::LB_DPadUp);
+    else if (lb && down)   control.SetGamepad(Input::Gamepad::LB_DPadDown);
+    else if (lb && left)   control.SetGamepad(Input::Gamepad::LB_DPadLeft);
+    else if (lb && right)  control.SetGamepad(Input::Gamepad::LB_DPadRight);
+    // RB combos
+    else if (rb && a)      control.SetGamepad(Input::Gamepad::RB_A);
+    else if (rb && b)      control.SetGamepad(Input::Gamepad::RB_B);
+    else if (rb && x)      control.SetGamepad(Input::Gamepad::RB_X);
+    else if (rb && y)      control.SetGamepad(Input::Gamepad::RB_Y);
+    else if (rb && ls)     control.SetGamepad(Input::Gamepad::RB_LStick);
+    else if (rb && rs)     control.SetGamepad(Input::Gamepad::RB_RStick);
+    else if (rb && up)     control.SetGamepad(Input::Gamepad::RB_DPadUp);
+    else if (rb && down)   control.SetGamepad(Input::Gamepad::RB_DPadDown);
+    else if (rb && left)   control.SetGamepad(Input::Gamepad::RB_DPadLeft);
+    else if (rb && right)  control.SetGamepad(Input::Gamepad::RB_DPadRight);
+    // LB+RB together
+    else if (lb && rb)     control.SetGamepad(Input::Gamepad::LB_RB);
+    // Individual buttons
+    else if (a)       control.SetGamepad(Input::Gamepad::A);
+    else if (b)       control.SetGamepad(Input::Gamepad::B);
+    else if (x)       control.SetGamepad(Input::Gamepad::X);
+    else if (y)       control.SetGamepad(Input::Gamepad::Y);
+    else if (lb)      control.SetGamepad(Input::Gamepad::LB);
+    else if (rb)      control.SetGamepad(Input::Gamepad::RB);
+    else if (ls)      control.SetGamepad(Input::Gamepad::LStick);
+    else if (rs)      control.SetGamepad(Input::Gamepad::RStick);
+    else if (up)      control.SetGamepad(Input::Gamepad::DPadUp);
+    else if (down)    control.SetGamepad(Input::Gamepad::DPadDown);
+    else if (left)    control.SetGamepad(Input::Gamepad::DPadLeft);
+    else if (right)   control.SetGamepad(Input::Gamepad::DPadRight);
+
+    // --- Map axes to control commands (matching G1 convention) ---
+    control.x   = gamepad_ly_;   // left stick Y → forward/back
+    control.y   = -gamepad_lx_;  // left stick X → lateral (negated)
+    control.yaw = -gamepad_rx_;  // right stick X → turning (negated)
 }
 
 template <typename T>

@@ -548,6 +548,27 @@ if(SYSTEM_TYPE STREQUAL "Linux")
     endif()
 endif()
 
+# executable for rl real el4
+if(SYSTEM_TYPE STREQUAL "Linux")
+    add_executable(rl_real_el4 src/rl_real_el4.cpp)
+    target_link_libraries(rl_real_el4
+        rl_sdk
+        observation_buffer
+        ${YAML_CPP_LIBRARIES}
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_el4 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_el4
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_el4 DESTINATION lib/${PROJECT_NAME})
+        endif()
+    endif()
+endif()
+
 # executable for actuator net
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")

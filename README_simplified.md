@@ -38,6 +38,13 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 #### Mujoco
 
 ```bash
+./build.sh                    # Build all ROS packages
+./build.sh package1 package2  # Build specific ROS packages
+./build.sh -c                 # Clean all symlinks and build artifacts
+./build.sh --clean package1   # Clean specific package and build artifacts
+./build.sh -m                 # Build with CMake for hardware deployment
+./build.sh -mj                # Build with CMake and MuJoCo simulator support
+
 ./build.sh -mj  # or ./build.sh --mujoco
 ```
 
@@ -46,6 +53,21 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 # Example: ./cmake_build/bin/rl_sim_mujoco g1 scene_29dof
 ./cmake_build/bin/rl_sim_mujoco el4 scene
 ```
+
+#### G1 Deploy Hardware
+
+```bash
+# EL4 (custom joystick always enabled by default)
+./rl_real_el4                                    # uses /dev/input/js0
+./rl_real_el4 --custom-joystick /dev/input/js1  # custom device
+./rl_real_el4 --help
+
+# G1 (opt-in only, wireless remote still works without the flag)
+./cmake_build/bin/rl_real_g1 enp5s0 --custom-joystick              # uses /dev/input/js0
+./cmake_build/bin/rl_real_g1 eth0 --custom-joystick /dev/input/js1
+./cmake_build/bin/rl_real_g1 eth0                                # wireless remote only (unchanged)
+```
+
 
 ## Add Your Robot
 

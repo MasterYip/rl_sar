@@ -4,6 +4,7 @@
  */
 
 #include "rl_real_g1.hpp"
+#include <cstring>
 
 RL_Real::RL_Real(int argc, char **argv)
 {
@@ -151,6 +152,9 @@ void RL_Real::GetState(RobotState<float> *state)
     this->control.x = this->gamepad.ly;
     this->control.y = -this->gamepad.lx;
     this->control.yaw = -this->gamepad.rx;
+
+    // Override with custom joystick if --custom-joystick was provided
+    this->GamepadInterface();
 
     state->imu.quaternion[0] = this->unitree_low_state.imu_state().quaternion()[0]; // w
     state->imu.quaternion[1] = this->unitree_low_state.imu_state().quaternion()[1]; // x
@@ -379,25 +383,58 @@ void signalHandler(int signum)
 
 int main(int argc, char **argv)
 {
-    if (argc < 2)
+    // Parse command line arguments
+    std::string network_interface;
+    std::string gamepad_device;
+    for (int i = 1; i < argc; ++i)
     {
-        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " networkInterface" << std::endl;
-        throw std::runtime_error("Invalid arguments");
+        if (std::strcmp(argv[i], "--custom-joystick") == 0)
+        {
+            if (i + 1 < argc)
+            {
+                gamepad_device = argv[++i];
+            }
+            else
+            {
+                gamepad_device = "/dev/input/js0";
+            }
+        }
+        else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0)
+        {
+            std::cout << "Usage: " << argv[0] << " <networkInterface> [OPTIONS]" << std::endl;
+            std::cout << "Options:" << std::endl;
+            std::cout << "  --custom-joystick <device>   Use custom joystick device (default: /dev/input/js0)" << std::endl;
+            std::cout << "  --help, -h                   Show this help message" << std::endl;
+            return 0;
+        }
+        else if (argv[i][0] != '-')
+        {
+            network_interface = argv[i];
+        }
     }
-    ChannelFactory::Instance()->Init(0, argv[1]);
+
+    if (network_interface.empty())
+    {
+        std::cout << LOGGER::ERROR << "Usage: " << argv[0] << " <networkInterface> [OPTIONS]" << std::endl;
+        throw std::runtime_error("Invalid arguments: networkInterface is required");
+    }
+    ChannelFactory::Instance()->Init(0, network_interface);
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     signal(SIGINT, signalHandler);
     ros::init(argc, argv, "rl_sar");
     RL_Real rl_sar(argc, argv);
+    if (!gamepad_device.empty()) rl_sar.gamepad_device_path = gamepad_device;
     ros::spin();
 #elif defined(USE_ROS2) && defined(USE_ROS)
     rclcpp::init(argc, argv);
     auto rl_sar = std::make_shared<RL_Real>(argc, argv);
+    if (!gamepad_device.empty()) rl_sar->gamepad_device_path = gamepad_device;
     rclcpp::spin(rl_sar->ros2_node);
     rclcpp::shutdown();
 #elif defined(USE_CMAKE) || !defined(USE_ROS)
     RL_Real rl_sar(argc, argv);
+    if (!gamepad_device.empty()) rl_sar.gamepad_device_path = gamepad_device;
     while (1) { sleep(10); }
 #endif
 
