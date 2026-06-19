@@ -45,7 +45,8 @@ RL_Real::RL_Real(int argc, char **argv)
     this->InitJointNum(this->params.Get<int>("num_of_dofs"));
     this->InitOutputs();
     this->InitControl();
-    // init MotionSwitcherClient
+    // init MotionSwitcherClient — auto-enters debug mode (no L2+R2 needed on Unitree joystick)
+    std::cout << LOGGER::INFO << "Auto-entering debug mode (releasing built-in motion services)..." << std::endl;
     this->msc.SetTimeout(5.0f);
     this->msc.Init();
     // Shut down motion control-related service
@@ -58,6 +59,7 @@ RL_Real::RL_Real(int argc, char **argv)
         }
         sleep(5);
     }
+    std::cout << LOGGER::INFO << "Debug mode entered successfully." << std::endl;
     // create lowcmd publisher
     this->lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
     this->lowcmd_publisher->InitChannel();
@@ -67,6 +69,52 @@ RL_Real::RL_Real(int argc, char **argv)
     // create imutorso subscriber
     this->imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     this->imutorso_subscriber->InitChannel(std::bind(&RL_Real::ImuTorsoHandler, this, std::placeholders::_1), 1);
+
+    // Determine the correct mode_machine for this G1 robot.
+    // The robot will reject motor commands if mode_machine doesn't match.
+    // Map: num_of_dofs=23 → mode_machine=4 (23dof), num_of_dofs=29 → mode_machine=5 (29dof)
+    int num_dofs = this->params.Get<int>("num_of_dofs");
+    if (num_dofs <= 23)
+        this->mode_machine = 4;  // G1 23dof
+    else
+        this->mode_machine = 5;  // G1 29dof
+
+    // Perform handshake: actively tell the robot what controller type we are,
+    // then wait for it to acknowledge (equivalent to deploy template's
+    // lowcmd->check_mode_machine(lowstate) after setting mode_machine).
+    std::cout << LOGGER::INFO << "Sending control handshake (mode_machine="
+              << unsigned(this->mode_machine) << ")..." << std::endl;
+    this->unitree_low_command.mode_machine() = this->mode_machine;
+    this->unitree_low_command.crc() = Crc32Core((uint32_t *)&this->unitree_low_command, (sizeof(LowCmd_) >> 2) - 1);
+    this->lowcmd_publisher->Write(this->unitree_low_command);
+
+    // Wait for the robot to acknowledge by reflecting our mode_machine in its low state
+    std::cout << LOGGER::INFO << "Waiting for robot to acknowledge handshake..." << std::endl;
+    {
+        auto wait_start = std::chrono::steady_clock::now();
+        bool acknowledged = false;
+        while (true)
+        {
+            auto elapsed = std::chrono::duration<float>(std::chrono::steady_clock::now() - wait_start).count();
+            if (elapsed > 3.0f)
+            {
+                std::cout << LOGGER::WARNING << "Timeout waiting for robot handshake acknowledgement." << std::endl;
+                break;
+            }
+            if (this->lowstate_subscriber->GetLastDataAvailableTime() >= 0 &&
+                this->unitree_low_state.mode_machine() == this->mode_machine)
+            {
+                acknowledged = true;
+                break;
+            }
+            usleep(5000); // 5 ms
+        }
+        if (acknowledged)
+        {
+            std::cout << LOGGER::INFO << "Robot acknowledged. G1 type: "
+                      << unsigned(this->unitree_low_state.mode_machine()) << std::endl;
+        }
+    }
 
     // loop
     this->loop_keyboard = std::make_shared<LoopFunc>("loop_keyboard", 0.05, std::bind(&RL_Real::KeyboardInterface, this));
@@ -105,10 +153,9 @@ void RL_Real::GetState(RobotState<float> *state)
 {
     if (this->mode_machine != this->unitree_low_state.mode_machine())
     {
-        if (this->mode_machine == 0)
-        {
-            std::cout << "G1 type: " << unsigned(this->unitree_low_state.mode_machine()) << std::endl;
-        }
+        std::cout << LOGGER::WARNING << "G1 mode_machine mismatch: expected "
+                  << unsigned(this->mode_machine) << ", got "
+                  << unsigned(this->unitree_low_state.mode_machine()) << std::endl;
         this->mode_machine = this->unitree_low_state.mode_machine();
     }
 
